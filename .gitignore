@@ -1,0 +1,28 @@
+node_modules/
+.env
+.env.local
+*.log
+dist/
+build/
+.DS_Store
+coverage/
+.vscode/
+.idea/
+
+# Backend
+backend/node_modules/
+backend/.env
+backend/dist/
+
+# Frontend
+frontend/node_modules/
+frontend/.env
+frontend/.env.local
+frontend/dist/
+
+# Database
+*.db
+*.sqlite
+
+# Prisma
+backend/prisma/migrations/

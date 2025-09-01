@@ -1,0 +1,79 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String   @id @default(cuid())
+  clerkId       String   @unique
+  email         String   @unique
+  company       Company?
+  linkedinToken String?  // Encrypted LinkedIn access token
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+model Company {
+  id              String   @id @default(cuid())
+  userId          String   @unique
+  user            User     @relation(fields: [userId], references: [id])
+  name            String
+  brandVoiceData  Json     // Stores all brand voice analysis
+  contentPillars  String[]
+  postingSchedule Json     // Default posting times  
+  meetings        Meeting[]
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model Meeting {
+  id           String        @id @default(cuid())
+  companyId    String
+  company      Company       @relation(fields: [companyId], references: [id])
+  readaiId     String        @unique
+  title        String?
+  transcript   String        @db.Text
+  summary      String?       @db.Text
+  actionItems  Json?
+  contentHooks ContentHook[]
+  processedAt  DateTime?
+  createdAt    DateTime      @default(now())
+}
+
+model ContentHook {
+  id          String        @id @default(cuid())
+  meetingId   String
+  meeting     Meeting       @relation(fields: [meetingId], references: [id])
+  hook        String        @db.Text
+  pillar      String?       // Which content pillar this belongs to
+  posts       ContentPost[]
+  createdAt   DateTime      @default(now())
+}
+
+model ContentPost {
+  id             String     @id @default(cuid())
+  hookId         String
+  hook           ContentHook @relation(fields: [hookId], references: [id])
+  content        String     @db.Text
+  imageUrl       String?
+  imagePrompt    String?    @db.Text
+  status         PostStatus @default(PENDING)
+  scheduledFor   DateTime?
+  publishedAt    DateTime?
+  linkedinPostId String?
+  editHistory    Json?      // Track content edits
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+}
+
+enum PostStatus {
+  PENDING
+  APPROVED
+  SCHEDULED
+  PUBLISHED
+  REJECTED
+}
