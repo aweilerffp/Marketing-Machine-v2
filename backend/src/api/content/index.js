@@ -1,8 +1,12 @@
 import express from 'express';
 import { requireAuth, getUserId } from '../../middleware/clerk.js';
 import prisma from '../../models/prisma.js';
+import demoRouter from './demo.js';
 
 const router = express.Router();
+
+// Mount demo routes
+router.use('/demo', demoRouter);
 
 // Get content posts for approval queue
 router.get('/queue', requireAuth, async (req, res) => {

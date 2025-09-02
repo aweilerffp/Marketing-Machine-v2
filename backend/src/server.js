@@ -41,8 +41,18 @@ app.get('/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
-// Apply Clerk middleware
-app.use(clerkMiddleware());
+// Apply Clerk middleware conditionally
+const isDevelopment = process.env.NODE_ENV !== 'production';
+if (isDevelopment && process.env.CLERK_PUBLISHABLE_KEY === 'pk_test_valid_key_placeholder') {
+  console.log('🚧 Development mode: Skipping Clerk middleware initialization');
+  // Add a simple middleware that sets auth to null for dev mode
+  app.use((req, res, next) => {
+    req.auth = null;
+    next();
+  });
+} else {
+  app.use(clerkMiddleware());
+}
 
 app.use('/api/webhooks', webhooksRouter);
 app.use('/api/auth', authRouter);

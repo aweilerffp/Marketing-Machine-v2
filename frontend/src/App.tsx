@@ -1,6 +1,8 @@
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { QueryClient, QueryClientProvider, useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
+import { companyApi, contentApi } from './services/api';
+import { ContentQueue } from './components/ContentQueue';
 
 function SimpleLandingPage() {
   return (
@@ -59,15 +61,208 @@ function SimpleLandingPage() {
 const queryClient = new QueryClient();
 
 function TestDashboard() {
+  
+  // Get company data to check if onboarding is complete
+  const { data: company, isLoading: companyLoading } = useQuery({
+    queryKey: ['company'],
+    queryFn: companyApi.getCurrent,
+    retry: 2,
+  });
+
+  // Get content queue
+  const { data: contentQueue, isLoading: queueLoading, refetch: refetchQueue } = useQuery({
+    queryKey: ['content', 'queue'],
+    queryFn: contentApi.getQueue,
+    retry: 2,
+  });
+
+  // Demo content generation mutation
+  const generateDemoMutation = useMutation({
+    mutationFn: contentApi.generateDemo,
+    onSuccess: (data) => {
+      // Refetch the content queue to show new posts
+      refetchQueue();
+      
+      // Show success message
+      alert(`🎉 Demo Content Generated Successfully!\n\n` +
+            `Generated ${data.postsGenerated} LinkedIn posts from: ${data.meeting.title}\n\n` +
+            `Check the approval queue below to review your AI-generated content!`);
+    },
+    onError: (error: unknown) => {
+      console.error('Demo generation error:', error);
+      let errorMessage = 'Failed to generate demo content. ';
+      const err = error as any;
+      if (err.response) {
+        errorMessage += `Server responded with ${err.response.status}: ${err.response.data?.error || err.response.statusText}`;
+      } else if (err.request) {
+        errorMessage += 'Unable to reach the server. Make sure the backend is running.';
+      } else {
+        errorMessage += err.message || 'Unknown error occurred';
+      }
+      alert('❌ ' + errorMessage);
+    },
+  });
+
+  const isOnboarded = company && company.name && company.brandVoiceData;
+  const isGenerating = generateDemoMutation.isPending;
+
   return (
-    <div className="p-8">
-      <h1 className="text-3xl font-bold mb-4">Dashboard</h1>
-      <p>Welcome to your dashboard!</p>
-      <div className="mt-4 space-x-4">
-        <a href="/" className="text-blue-600 hover:text-blue-800">← Back to Home</a>
-        <a href="/onboarding" className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700">
-          Complete Onboarding
-        </a>
+    <div className="min-h-screen bg-gray-50">
+      <div className="max-w-6xl mx-auto p-8">
+        <header className="mb-8">
+          <h1 className="text-4xl font-bold text-gray-900 mb-2">Marketing Machine Dashboard</h1>
+          <p className="text-gray-600">AI-powered LinkedIn content generation for your brand</p>
+        </header>
+
+        {/* Navigation */}
+        <div className="mb-8 flex space-x-4">
+          <a href="/" className="text-blue-600 hover:text-blue-800">← Back to Home</a>
+          {isOnboarded && (
+            <a href="/content-queue" className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700">
+              🎯 Content Queue
+            </a>
+          )}
+          {!isOnboarded && (
+            <a href="/onboarding" className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700">
+              Complete Onboarding
+            </a>
+          )}
+        </div>
+
+        {companyLoading ? (
+          <div className="text-center py-8">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
+            <p className="mt-4 text-gray-600">Loading your dashboard...</p>
+          </div>
+        ) : !isOnboarded ? (
+          <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-6 mb-8">
+            <h2 className="text-xl font-semibold text-yellow-800 mb-2">Complete Your Onboarding</h2>
+            <p className="text-yellow-700 mb-4">
+              To generate AI content, please complete the brand voice onboarding process first.
+            </p>
+            <a 
+              href="/onboarding" 
+              className="bg-yellow-600 text-white px-6 py-2 rounded-md hover:bg-yellow-700"
+            >
+              Start Onboarding →
+            </a>
+          </div>
+        ) : (
+          <>
+            {/* Company Info */}
+            <div className="bg-white rounded-lg shadow-sm border p-6 mb-8">
+              <h2 className="text-xl font-semibold text-gray-900 mb-4">Company Profile</h2>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                  <p className="text-sm text-gray-500">Company Name</p>
+                  <p className="font-medium">{company.name}</p>
+                </div>
+                <div>
+                  <p className="text-sm text-gray-500">Industry</p>
+                  <p className="font-medium">{company.brandVoiceData?.industry || 'Not specified'}</p>
+                </div>
+                <div>
+                  <p className="text-sm text-gray-500">Target Audience</p>
+                  <p className="font-medium">{company.brandVoiceData?.targetAudience || 'Not specified'}</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Demo Content Generation */}
+            <div className="bg-white rounded-lg shadow-sm border p-6 mb-8">
+              <h2 className="text-xl font-semibold text-gray-900 mb-4">🚀 Demo Content Generation</h2>
+              <p className="text-gray-600 mb-4">
+                Generate sample LinkedIn posts using your brand voice data. This demonstrates how the AI 
+                creates content from meeting transcripts using your specific brand voice and target audience.
+              </p>
+              
+              <button
+                onClick={() => generateDemoMutation.mutate()}
+                disabled={isGenerating}
+                className="bg-green-600 text-white px-6 py-3 rounded-md hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed flex items-center space-x-2"
+              >
+                {isGenerating ? (
+                  <>
+                    <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+                    <span>Generating Content...</span>
+                  </>
+                ) : (
+                  <>
+                    <span>🎯</span>
+                    <span>Generate Sample Content</span>
+                  </>
+                )}
+              </button>
+              
+              <div className="mt-4 text-sm text-gray-500">
+                <p>• Uses your FlatFilePro brand voice and Amazon seller focus</p>
+                <p>• Creates 3-5 LinkedIn posts from sample meeting topics</p>
+                <p>• Posts appear in the approval queue below</p>
+              </div>
+            </div>
+
+            {/* Content Queue */}
+            <div className="bg-white rounded-lg shadow-sm border p-6">
+              <h2 className="text-xl font-semibold text-gray-900 mb-4">📋 Content Approval Queue</h2>
+              
+              {queueLoading ? (
+                <div className="text-center py-8">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
+                  <p className="mt-2 text-gray-600">Loading content...</p>
+                </div>
+              ) : !contentQueue?.length ? (
+                <div className="text-center py-8">
+                  <p className="text-gray-500 mb-4">No content in the queue yet.</p>
+                  <p className="text-sm text-gray-400">Generate demo content above to see AI-generated LinkedIn posts here!</p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {contentQueue.map((post) => (
+                    <div key={post.id} className="border rounded-lg p-4">
+                      <div className="flex justify-between items-start mb-2">
+                        <div className="text-sm text-gray-500">
+                          From: {post.hook.meeting?.title || 'Unknown Meeting'}
+                        </div>
+                        <span className={`px-2 py-1 rounded text-xs font-medium ${{
+                          'PENDING': 'bg-yellow-100 text-yellow-800',
+                          'APPROVED': 'bg-green-100 text-green-800',
+                          'REJECTED': 'bg-red-100 text-red-800',
+                          'SCHEDULED': 'bg-blue-100 text-blue-800',
+                          'PUBLISHED': 'bg-purple-100 text-purple-800'
+                        }[post.status]}`}>
+                          {post.status}
+                        </span>
+                      </div>
+                      
+                      <div className="mb-2">
+                        <p className="text-sm text-gray-600 font-medium">Content Hook:</p>
+                        <p className="text-sm text-gray-800">{post.hook.hook}</p>
+                      </div>
+                      
+                      <div className="mb-3">
+                        <p className="text-sm text-gray-600 font-medium">Generated LinkedIn Post:</p>
+                        <div className="bg-gray-50 p-3 rounded border text-sm whitespace-pre-wrap">
+                          {post.content}
+                        </div>
+                      </div>
+                      
+                      {post.imagePrompt && (
+                        <div className="mb-3">
+                          <p className="text-sm text-gray-600 font-medium">Image Suggestion:</p>
+                          <p className="text-sm text-gray-700 italic">{post.imagePrompt}</p>
+                        </div>
+                      )}
+                      
+                      <div className="text-xs text-gray-400">
+                        Created: {new Date(post.createdAt).toLocaleString()}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </>
+        )}
       </div>
     </div>
   );
@@ -79,17 +274,12 @@ function WorkingOnboarding() {
     companyName: '',
     industry: '',
     targetAudience: '',
-    contentPillars: [] as string[],
-    tone: '',
-    personality: [] as string[],
-    style: '',
     colors: [] as string[],
-    keywords: [] as string[],
     websiteContent: '',
     socialPosts: [] as string[],
     marketingEmails: [] as string[],
     supportEmails: [] as string[],
-    demoVideos: [] as string[],
+    videoTranscripts: [] as string[],
     storyBrand: '',
     timezone: 'America/New_York',
     postingTimes: ['09:00', '13:00']
@@ -97,13 +287,11 @@ function WorkingOnboarding() {
 
   // Temporary input states for adding items
   const [tempInputs, setTempInputs] = useState({
-    newPillar: '',
     newColor: '',
-    newKeyword: '',
     newSocialPost: '',
     newMarketingEmail: '',
     newSupportEmail: '',
-    newDemoVideo: ''
+    newVideoTranscript: ''
   });
 
   const nextStep = () => setStep(step + 1);
@@ -126,14 +314,6 @@ function WorkingOnboarding() {
     }));
   };
   
-  const togglePersonality = (trait: string) => {
-    setFormData(prev => ({
-      ...prev,
-      personality: prev.personality.includes(trait)
-        ? prev.personality.filter(p => p !== trait)
-        : [...prev.personality, trait]
-    }));
-  };
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -141,13 +321,13 @@ function WorkingOnboarding() {
         {/* Progress Bar */}
         <div className="mb-8">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-sm font-medium text-gray-700">Step {step} of 6</span>
-            <span className="text-sm text-gray-500">{Math.round((step / 6) * 100)}% complete</span>
+            <span className="text-sm font-medium text-gray-700">Step {step} of 4</span>
+            <span className="text-sm text-gray-500">{Math.round((step / 4) * 100)}% complete</span>
           </div>
           <div className="w-full bg-gray-200 rounded-full h-2">
             <div 
               className="bg-blue-600 h-2 rounded-full transition-all duration-300"
-              style={{ width: `${(step / 6) * 100}%` }}
+              style={{ width: `${(step / 4) * 100}%` }}
             />
           </div>
         </div>
@@ -200,24 +380,6 @@ function WorkingOnboarding() {
           )}
 
           {step === 2 && (
-            <ContentPillarsStep 
-              formData={formData}
-              tempInputs={tempInputs}
-              setTempInputs={setTempInputs}
-              addItem={addItem}
-              removeItem={removeItem}
-            />
-          )}
-
-          {step === 3 && (
-            <BrandVoiceStep 
-              formData={formData}
-              setFormData={setFormData}
-              togglePersonality={togglePersonality}
-            />
-          )}
-
-          {step === 4 && (
             <BrandAssetsStep 
               formData={formData}
               tempInputs={tempInputs}
@@ -227,7 +389,7 @@ function WorkingOnboarding() {
             />
           )}
 
-          {step === 5 && (
+          {step === 3 && (
             <ContentExamplesStep 
               formData={formData}
               setFormData={setFormData}
@@ -238,7 +400,7 @@ function WorkingOnboarding() {
             />
           )}
 
-          {step === 6 && (
+          {step === 4 && (
             <FinalReviewStep 
               formData={formData}
               setFormData={setFormData}
@@ -256,7 +418,7 @@ function WorkingOnboarding() {
             Previous
           </button>
           
-          {step < 6 && (
+          {step < 4 && (
             <button
               onClick={nextStep}
               className="bg-blue-600 text-white px-6 py-2 rounded-md hover:bg-blue-700"
@@ -271,58 +433,6 @@ function WorkingOnboarding() {
 }
 
 // Helper components to keep it clean
-function ContentPillarsStep({ formData, tempInputs, setTempInputs, addItem, removeItem }: any) {
-  return (
-    <div className="space-y-4">
-      <h2 className="text-2xl font-bold text-gray-900">Content Pillars</h2>
-      <p className="text-gray-600">What topics should your content focus on? (minimum 2 required)</p>
-      
-      <div className="flex space-x-2">
-        <input
-          type="text"
-          value={tempInputs.newPillar}
-          onChange={(e) => setTempInputs((prev: any) => ({...prev, newPillar: e.target.value}))}
-          className="flex-1 border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-blue-500"
-          placeholder="e.g., Industry Insights, Leadership, Innovation..."
-          onKeyPress={(e) => {
-            if (e.key === 'Enter') {
-              addItem('contentPillars', tempInputs.newPillar, 'newPillar');
-            }
-          }}
-        />
-        <button
-          onClick={() => addItem('contentPillars', tempInputs.newPillar, 'newPillar')}
-          className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700"
-        >
-          Add
-        </button>
-      </div>
-      
-      {formData.contentPillars.length > 0 && (
-        <div className="flex flex-wrap gap-2">
-          {formData.contentPillars.map((pillar: string, index: number) => (
-            <span
-              key={index}
-              className="bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-sm flex items-center"
-            >
-              {pillar}
-              <button
-                onClick={() => removeItem('contentPillars', index)}
-                className="ml-2 text-blue-600 hover:text-blue-800"
-              >
-                ×
-              </button>
-            </span>
-          ))}
-        </div>
-      )}
-      
-      {formData.contentPillars.length < 2 && (
-        <p className="text-sm text-orange-600">Add at least 2 content pillars to continue</p>
-      )}
-    </div>
-  );
-}
 
 function BrandVoiceStep({ formData, setFormData, togglePersonality }: any) {
   return (
@@ -385,8 +495,8 @@ function BrandVoiceStep({ formData, setFormData, togglePersonality }: any) {
 function BrandAssetsStep({ formData, tempInputs, setTempInputs, addItem, removeItem }: any) {
   return (
     <div className="space-y-6">
-      <h2 className="text-2xl font-bold text-gray-900">Brand Assets & Keywords</h2>
-      <p className="text-gray-600">Optional brand elements to enhance content generation</p>
+      <h2 className="text-2xl font-bold text-gray-900">Brand Assets</h2>
+      <p className="text-gray-600">Optional brand colors to enhance content generation</p>
       
       <div>
         <label className="block text-sm font-medium text-gray-700 mb-2">Brand Colors (optional)</label>
@@ -413,38 +523,6 @@ function BrandAssetsStep({ formData, tempInputs, setTempInputs, addItem, removeI
                 <span key={index} className="bg-purple-100 text-purple-800 px-3 py-1 rounded-full text-sm flex items-center">
                   {color}
                   <button onClick={() => removeItem('colors', index)} className="ml-2 text-purple-600 hover:text-purple-800">×</button>
-                </span>
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
-      
-      <div>
-        <label className="block text-sm font-medium text-gray-700 mb-2">Key Brand Keywords (optional)</label>
-        <div className="space-y-3">
-          <div className="flex space-x-2">
-            <input
-              type="text"
-              value={tempInputs.newKeyword}
-              onChange={(e) => setTempInputs((prev: any) => ({...prev, newKeyword: e.target.value}))}
-              className="flex-1 border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-blue-500"
-              placeholder="e.g., innovation, leadership, growth, technology..."
-              onKeyPress={(e) => e.key === 'Enter' && addItem('keywords', tempInputs.newKeyword, 'newKeyword')}
-            />
-            <button
-              onClick={() => addItem('keywords', tempInputs.newKeyword, 'newKeyword')}
-              className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700"
-            >
-              Add
-            </button>
-          </div>
-          {formData.keywords.length > 0 && (
-            <div className="flex flex-wrap gap-2">
-              {formData.keywords.map((keyword: string, index: number) => (
-                <span key={index} className="bg-green-100 text-green-800 px-3 py-1 rounded-full text-sm flex items-center">
-                  {keyword}
-                  <button onClick={() => removeItem('keywords', index)} className="ml-2 text-green-600 hover:text-green-800">×</button>
                 </span>
               ))}
             </div>
@@ -572,31 +650,35 @@ function ContentExamplesStep({ formData, setFormData, tempInputs, setTempInputs,
       </div>
       
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-2">Demo Videos (optional)</label>
+        <label className="block text-sm font-medium text-gray-700 mb-2">Video Transcripts (optional)</label>
+        <p className="text-xs text-gray-500 mb-3">Paste transcripts from your company videos, demos, or presentations</p>
         <div className="space-y-3">
           <div className="flex space-x-2">
-            <input
-              type="url"
-              value={tempInputs.newDemoVideo}
-              onChange={(e) => setTempInputs((prev: any) => ({...prev, newDemoVideo: e.target.value}))}
-              className="flex-1 border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-blue-500"
-              placeholder="https://youtube.com/watch?v=... or https://vimeo.com/..."
-              onKeyPress={(e) => e.key === 'Enter' && addItem('demoVideos', tempInputs.newDemoVideo, 'newDemoVideo')}
+            <textarea
+              value={tempInputs.newVideoTranscript}
+              onChange={(e) => setTempInputs((prev: any) => ({...prev, newVideoTranscript: e.target.value}))}
+              className="flex-1 border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-blue-500 h-20"
+              placeholder="Paste video transcript or demo script here..."
             />
             <button
-              onClick={() => addItem('demoVideos', tempInputs.newDemoVideo, 'newDemoVideo')}
-              className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700"
+              onClick={() => addItem('videoTranscripts', tempInputs.newVideoTranscript, 'newVideoTranscript')}
+              className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 self-start"
             >
               Add
             </button>
           </div>
-          {formData.demoVideos.length > 0 && (
-            <div className="flex flex-wrap gap-2">
-              {formData.demoVideos.map((video: string, index: number) => (
-                <span key={index} className="bg-red-100 text-red-800 px-3 py-1 rounded-full text-sm flex items-center">
-                  📹 Video {index + 1}
-                  <button onClick={() => removeItem('demoVideos', index)} className="ml-2 text-red-600 hover:text-red-800">×</button>
-                </span>
+          {formData.videoTranscripts.length > 0 && (
+            <div className="space-y-2">
+              {formData.videoTranscripts.map((transcript: string, index: number) => (
+                <div key={index} className="bg-purple-50 p-3 rounded-md text-sm border">
+                  <div className="flex justify-between items-start">
+                    <div className="flex-1">
+                      <div className="font-medium text-purple-800 mb-1">📹 Video Transcript {index + 1}</div>
+                      <span className="text-purple-700">{transcript.substring(0, 120)}{transcript.length > 120 ? '...' : ''}</span>
+                    </div>
+                    <button onClick={() => removeItem('videoTranscripts', index)} className="ml-2 text-red-600 hover:text-red-800 flex-shrink-0">×</button>
+                  </div>
+                </div>
               ))}
             </div>
           )}
@@ -674,45 +756,85 @@ function FinalReviewStep({ formData, setFormData }: any) {
           <div><strong>Company:</strong> {formData.companyName}</div>
           <div><strong>Industry:</strong> {formData.industry}</div>
           <div><strong>Target Audience:</strong> {formData.targetAudience}</div>
-          <div><strong>Content Pillars:</strong> {formData.contentPillars.join(', ') || 'None'}</div>
-          <div><strong>Brand Tone:</strong> {formData.tone}</div>
-          <div><strong>Personality Traits:</strong> {formData.personality.join(', ') || 'None'}</div>
-          <div><strong>Communication Style:</strong> {formData.style || 'Not specified'}</div>
           <div><strong>Brand Colors:</strong> {formData.colors.join(', ') || 'None'}</div>
-          <div><strong>Keywords:</strong> {formData.keywords.join(', ') || 'None'}</div>
           <div><strong>Website Content:</strong> {formData.websiteContent ? 'Provided' : 'Missing (Required)'}</div>
           <div><strong>Social Posts:</strong> {formData.socialPosts.length} examples</div>
           <div><strong>Marketing Emails:</strong> {formData.marketingEmails.length} examples</div>
           <div><strong>Support Emails:</strong> {formData.supportEmails.length} examples</div>
-          <div><strong>Demo Videos:</strong> {formData.demoVideos.length} videos</div>
+          <div><strong>Video Transcripts:</strong> {formData.videoTranscripts.length} transcripts</div>
           <div><strong>StoryBrand:</strong> {formData.storyBrand ? 'Provided' : 'Not provided'}</div>
           <div><strong>Posting Schedule:</strong> {formData.postingTimes.join(' & ')} ({formData.timezone})</div>
         </div>
       </div>
       
       <button
-        onClick={() => {
-          console.log('Complete Brand Voice Data:', formData);
-          alert(`Brand Voice Setup Complete! 
-          
-✅ ${formData.contentPillars.length} Content Pillars
-✅ ${formData.personality.length} Personality Traits  
+        onClick={async () => {
+          try {
+            // Structure data properly for database
+            const companyData = {
+              name: formData.companyName,
+              brandVoiceData: {
+                industry: formData.industry,
+                targetAudience: formData.targetAudience,
+                colors: formData.colors,
+                websiteContent: formData.websiteContent,
+                socialPosts: formData.socialPosts,
+                marketingEmails: formData.marketingEmails,
+                supportEmails: formData.supportEmails,
+                videoTranscripts: formData.videoTranscripts,
+                storyBrand: formData.storyBrand,
+                completedAt: new Date().toISOString()
+              },
+              contentPillars: [], // Empty array since we removed this step
+              postingSchedule: {
+                timezone: formData.timezone,
+                defaultTimes: formData.postingTimes
+              }
+            };
+            
+            console.log('Structured Company Data for API:', companyData);
+            
+            // Save to database via API
+            await companyApi.upsert(companyData);
+            
+            alert(`Brand Voice Setup Complete! 
+            
+✅ Company: ${formData.companyName}
+✅ Industry: ${formData.industry}
+✅ ${formData.colors.length} Brand Colors
 ✅ ${formData.socialPosts.length} Social Post Examples
 ✅ ${formData.marketingEmails.length} Marketing Email Examples
 ✅ ${formData.supportEmails.length} Support Email Examples
-✅ ${formData.demoVideos.length} Demo Videos
+✅ ${formData.videoTranscripts.length} Video Transcripts
 
-All data logged to console. Ready for AI content generation!`);
+All data structured for database storage!`);
+            
+          } catch (error: unknown) {
+            console.error('Onboarding submission error:', error);
+            
+            // Show more detailed error information
+            let errorMessage = 'Error saving onboarding data. ';
+            const err = error as any;
+            if (err.response) {
+              errorMessage += `Server responded with ${err.response.status}: ${err.response.data?.error || err.response.statusText}`;
+            } else if (err.request) {
+              errorMessage += 'Unable to reach the server. Make sure the backend is running on http://localhost:3001';
+            } else {
+              errorMessage += err.message || 'Unknown error occurred';
+            }
+            
+            alert(errorMessage + '\n\nPlease check the console for more details.');
+          }
         }}
-        disabled={!formData.companyName || !formData.industry || !formData.targetAudience || formData.contentPillars.length < 2 || !formData.tone || formData.personality.length === 0 || !formData.websiteContent}
+        disabled={!formData.companyName || !formData.industry || !formData.targetAudience || !formData.websiteContent}
         className="w-full bg-green-600 text-white py-4 rounded-md font-semibold hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
       >
         🚀 Complete Brand Voice Setup
       </button>
       
-      {(!formData.companyName || !formData.industry || !formData.targetAudience || formData.contentPillars.length < 2 || !formData.tone || formData.personality.length === 0 || !formData.websiteContent) && (
+      {(!formData.companyName || !formData.industry || !formData.targetAudience || !formData.websiteContent) && (
         <p className="text-sm text-red-600 text-center">
-          Please complete all required fields: Company Info, Content Pillars (2+), Brand Tone, Personality Traits (1+), and Website Content
+          Please complete all required fields: Company Info and Website Content
         </p>
       )}
     </div>
@@ -744,7 +866,7 @@ function OldSimpleOnboarding() {
     postingTimes: ['09:00', '13:00']
   });
 
-  const totalSteps = 6;
+  const totalSteps = 4;
   
   const nextStep = () => setStep(Math.min(step + 1, totalSteps));
   const prevStep = () => setStep(Math.max(step - 1, 1));
@@ -1209,6 +1331,7 @@ function App() {
           <Routes>
             <Route path="/" element={<SimpleLandingPage />} />
             <Route path="/dashboard" element={<TestDashboard />} />
+            <Route path="/content-queue" element={<ContentQueue />} />
             <Route path="/onboarding" element={<WorkingOnboarding />} />
           </Routes>
         </div>

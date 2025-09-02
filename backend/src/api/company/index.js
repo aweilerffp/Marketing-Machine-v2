@@ -82,7 +82,7 @@ router.post('/', requireAuth, async (req, res) => {
         data: {
           name,
           brandVoiceData: brandVoiceData || {},
-          contentPillars: contentPillars || [],
+          contentPillars: JSON.stringify(contentPillars || []),
           postingSchedule: postingSchedule || {
             defaultTimes: ['09:00', '13:00'],
             timezone: 'America/New_York'
@@ -96,7 +96,7 @@ router.post('/', requireAuth, async (req, res) => {
           userId: user.id,
           name,
           brandVoiceData: brandVoiceData || {},
-          contentPillars: contentPillars || [],
+          contentPillars: JSON.stringify(contentPillars || []),
           postingSchedule: postingSchedule || {
             defaultTimes: ['09:00', '13:00'],
             timezone: 'America/New_York'

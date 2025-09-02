@@ -1,7 +1,26 @@
 import { requireAuth as clerkRequireAuth } from '@clerk/express';
 
+// Development bypass for testing
+const isDevelopment = process.env.NODE_ENV !== 'production';
+const DEV_USER_ID = 'dev-test-user-id';
+
 // Middleware that requires authentication
-export const requireAuth = clerkRequireAuth();
+export const requireAuth = (req, res, next) => {
+  // Development bypass when using placeholder Clerk key
+  if (isDevelopment && process.env.CLERK_PUBLISHABLE_KEY === 'pk_test_valid_key_placeholder') {
+    console.log('🚧 Development mode: Bypassing Clerk authentication');
+    req.auth = { userId: DEV_USER_ID };
+    return next();
+  }
+  
+  try {
+    // Use actual Clerk authentication
+    return clerkRequireAuth()(req, res, next);
+  } catch (error) {
+    console.error('Clerk authentication error:', error.message);
+    return res.status(500).json({ error: 'Authentication service unavailable' });
+  }
+};
 
 // Helper to get user info from authenticated request
 export const getUserFromRequest = (req) => {

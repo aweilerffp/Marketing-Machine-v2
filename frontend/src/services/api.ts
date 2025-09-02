@@ -82,6 +82,24 @@ export const contentApi = {
       content
     });
     return response.data;
+  },
+
+  // Generate demo content
+  generateDemo: async (): Promise<{
+    message: string;
+    meeting: { id: string; title: string; summary: string };
+    postsGenerated: number;
+    posts: Array<{
+      id: string;
+      hook: string;
+      content: string;
+      imagePrompt: string;
+      status: string;
+      createdAt: string;
+    }>;
+  }> => {
+    const response = await api.post('/api/content/demo/generate');
+    return response.data;
   }
 };
 

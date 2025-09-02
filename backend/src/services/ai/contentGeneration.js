@@ -1,0 +1,187 @@
+import OpenAI from 'openai';
+
+// Initialize OpenAI client
+const openai = process.env.OPENAI_API_KEY ? new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY,
+}) : null;
+
+/**
+ * Generate content hooks from meeting transcript using AI
+ * @param {string} transcript - The meeting transcript
+ * @param {object} brandVoiceData - Company's brand voice data
+ * @param {string[]} contentPillars - Content pillar categories
+ * @returns {Promise<string[]>} Array of content hooks
+ */
+export async function generateContentHooks(transcript, brandVoiceData, contentPillars = []) {
+  // If no OpenAI key, return mock data
+  if (!openai || !process.env.OPENAI_API_KEY || process.env.OPENAI_API_KEY === 'your_openai_api_key_here') {
+    console.log('🤖 Using mock AI - no OpenAI key configured');
+    return getMockContentHooks(transcript, brandVoiceData);
+  }
+
+  try {
+    const prompt = `
+You are a LinkedIn content strategist for ${brandVoiceData.industry || 'technology'} companies.
+
+Company Context:
+- Industry: ${brandVoiceData.industry || 'Technology'}
+- Target Audience: ${brandVoiceData.targetAudience || 'Business professionals'}
+- Brand Voice: Professional, helpful, and authoritative
+
+Meeting Transcript:
+${transcript}
+
+Extract 3-5 key content hooks from this meeting that would make engaging LinkedIn posts. Each hook should be:
+1. Actionable and valuable to the target audience
+2. Specific and concrete (include numbers, examples, or specific problems/solutions)
+3. Aligned with the company's expertise and brand voice
+4. Written as a complete thought or insight
+
+Format: Return only the hooks, one per line, without numbering or bullets.
+`;
+
+    const completion = await openai.chat.completions.create({
+      model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
+      messages: [
+        { role: 'system', content: 'You are a LinkedIn content strategist that extracts valuable content hooks from meeting transcripts.' },
+        { role: 'user', content: prompt }
+      ],
+      max_tokens: 1000,
+      temperature: 0.7
+    });
+
+    const response = completion.choices[0]?.message?.content || '';
+    const hooks = response.split('\n').filter(hook => hook.trim().length > 0);
+
+    console.log(`✨ Generated ${hooks.length} content hooks using AI`);
+    return hooks;
+
+  } catch (error) {
+    console.error('❌ Error generating content hooks:', error);
+    // Fallback to mock data
+    return getMockContentHooks(transcript, brandVoiceData);
+  }
+}
+
+/**
+ * Generate LinkedIn post from content hook using AI
+ * @param {string} hook - The content hook
+ * @param {object} brandVoiceData - Company's brand voice data
+ * @param {string[]} contentPillars - Content pillar categories
+ * @returns {Promise<object>} LinkedIn post content and image prompt
+ */
+export async function generateLinkedInPost(hook, brandVoiceData, contentPillars = []) {
+  // If no OpenAI key, return mock data
+  if (!openai || !process.env.OPENAI_API_KEY || process.env.OPENAI_API_KEY === 'your_openai_api_key_here') {
+    console.log('🤖 Using mock AI - no OpenAI key configured');
+    return getMockLinkedInPost(hook, brandVoiceData);
+  }
+
+  try {
+    const prompt = `
+Create a LinkedIn post for a ${brandVoiceData.industry || 'technology'} company.
+
+Company Context:
+- Industry: ${brandVoiceData.industry || 'Technology'}
+- Target Audience: ${brandVoiceData.targetAudience || 'Business professionals'}
+- Brand Voice: Professional, helpful, and authoritative
+
+Content Hook:
+${hook}
+
+Website Content Context (for tone reference):
+${brandVoiceData.websiteContent ? brandVoiceData.websiteContent.substring(0, 500) + '...' : 'Professional technology company content'}
+
+Create a LinkedIn post that:
+1. Opens with a compelling hook that grabs attention
+2. Provides valuable insight or actionable advice
+3. Uses a conversational but professional tone
+4. Includes a call-to-action or thought-provoking question
+5. Is optimized for LinkedIn engagement (150-300 words)
+6. Matches the brand's voice and target audience
+
+Format your response as JSON:
+{
+  "content": "The LinkedIn post content",
+  "imagePrompt": "A brief description for an image that would complement this post"
+}
+`;
+
+    const completion = await openai.chat.completions.create({
+      model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
+      messages: [
+        { role: 'system', content: 'You are a LinkedIn content creator that writes engaging posts for business professionals. Always respond with valid JSON.' },
+        { role: 'user', content: prompt }
+      ],
+      max_tokens: 800,
+      temperature: 0.7
+    });
+
+    const response = completion.choices[0]?.message?.content || '';
+    
+    try {
+      const result = JSON.parse(response);
+      console.log('📱 Generated LinkedIn post using AI');
+      return result;
+    } catch (parseError) {
+      console.warn('⚠️ Failed to parse AI response as JSON, using fallback');
+      return {
+        content: response,
+        imagePrompt: "Professional business illustration related to the post content"
+      };
+    }
+
+  } catch (error) {
+    console.error('❌ Error generating LinkedIn post:', error);
+    // Fallback to mock data
+    return getMockLinkedInPost(hook, brandVoiceData);
+  }
+}
+
+/**
+ * Mock content hooks for when AI is not available
+ */
+function getMockContentHooks(transcript, brandVoiceData) {
+  const hooks = [
+    "93% of Amazon sellers have catalog rot eating away at their revenue, but most don't know until it's too late",
+    "The hidden cost of manual listing management: what used to take hours now takes minutes with the right automation",
+    "Why Amazon parent-child relationships break overnight and how to prevent silent listing failures",
+    "From spreadsheet chaos to streamlined success: how automation transforms Amazon seller operations",
+    "The one-click rollback feature that saves Amazon sellers from costly listing mistakes"
+  ];
+  
+  console.log('🤖 Generated mock content hooks (no AI key)');
+  return hooks.slice(0, 3); // Return 3 hooks
+}
+
+/**
+ * Mock LinkedIn post for when AI is not available
+ */
+function getMockLinkedInPost(hook, brandVoiceData) {
+  const industry = brandVoiceData.industry || 'technology';
+  const audience = brandVoiceData.targetAudience || 'business professionals';
+  
+  const post = {
+    content: `🚨 ${hook}
+
+Here's what every ${audience} needs to know:
+
+${industry === 'technology' ? 'Amazon sellers' : 'Business owners'} are losing revenue every day because their listings fail silently. You think everything is working fine, but behind the scenes, your variations are breaking, your content is disappearing, and your sales are suffering.
+
+The solution? Automated monitoring that catches these issues before they cost you money.
+
+✅ Real-time listing health checks
+✅ Instant alerts when something breaks  
+✅ One-click fixes for common issues
+✅ Complete version control and rollbacks
+
+Stop fighting with your catalog. Start focusing on growing your business.
+
+What's the biggest listing challenge you're facing right now? 👇`,
+    
+    imagePrompt: "Professional dashboard screenshot showing Amazon listing management interface with charts and data"
+  };
+  
+  console.log('🤖 Generated mock LinkedIn post (no AI key)');
+  return post;
+}

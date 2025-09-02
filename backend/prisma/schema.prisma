@@ -3,7 +3,7 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
+  provider = "sqlite"
   url      = env("DATABASE_URL")
 }
 
@@ -23,7 +23,7 @@ model Company {
   user            User     @relation(fields: [userId], references: [id])
   name            String
   brandVoiceData  Json     // Stores all brand voice analysis
-  contentPillars  String[]
+  contentPillars  String   // JSON string for SQLite compatibility
   postingSchedule Json     // Default posting times  
   meetings        Meeting[]
   createdAt       DateTime @default(now())
@@ -36,8 +36,8 @@ model Meeting {
   company      Company       @relation(fields: [companyId], references: [id])
   readaiId     String        @unique
   title        String?
-  transcript   String        @db.Text
-  summary      String?       @db.Text
+  transcript   String
+  summary      String?
   actionItems  Json?
   contentHooks ContentHook[]
   processedAt  DateTime?
@@ -48,7 +48,7 @@ model ContentHook {
   id          String        @id @default(cuid())
   meetingId   String
   meeting     Meeting       @relation(fields: [meetingId], references: [id])
-  hook        String        @db.Text
+  hook        String
   pillar      String?       // Which content pillar this belongs to
   posts       ContentPost[]
   createdAt   DateTime      @default(now())
@@ -58,9 +58,9 @@ model ContentPost {
   id             String     @id @default(cuid())
   hookId         String
   hook           ContentHook @relation(fields: [hookId], references: [id])
-  content        String     @db.Text
+  content        String
   imageUrl       String?
-  imagePrompt    String?    @db.Text
+  imagePrompt    String?
   status         PostStatus @default(PENDING)
   scheduledFor   DateTime?
   publishedAt    DateTime?
