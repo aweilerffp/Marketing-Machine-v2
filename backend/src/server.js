@@ -29,7 +29,7 @@ app.use(helmet());
 app.use(cors({
   origin: process.env.NODE_ENV === 'production' 
     ? process.env.FRONTEND_URL 
-    : 'http://localhost:5173',
+    : ['http://localhost:5173', 'http://localhost:3000'],
   credentials: true
 }));
 app.use(morgan('combined'));
@@ -41,17 +41,28 @@ app.get('/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
-// Apply Clerk middleware conditionally
-const isDevelopment = process.env.NODE_ENV !== 'production';
-if (isDevelopment && process.env.CLERK_PUBLISHABLE_KEY === 'pk_test_valid_key_placeholder') {
-  console.log('🚧 Development mode: Skipping Clerk middleware initialization');
-  // Add a simple middleware that sets auth to null for dev mode
+// Apply Clerk middleware (proper configuration)
+if (!process.env.CLERK_SECRET_KEY) {
+  console.warn('⚠️ CLERK_SECRET_KEY not configured - authentication will fail');
+}
+
+// Always use Clerk middleware in production, conditionally in development
+const useClerkAuth = process.env.NODE_ENV === 'production' || 
+                    (process.env.CLERK_SECRET_KEY && process.env.CLERK_SECRET_KEY !== 'your_clerk_secret_key_here');
+
+if (useClerkAuth) {
+  console.log('🔒 Clerk authentication enabled');
+  app.use(clerkMiddleware());
+} else {
+  console.log('🚧 Development mode: Mock authentication enabled');
+  // Mock auth for development
   app.use((req, res, next) => {
-    req.auth = null;
+    req.auth = {
+      userId: 'dev_user_123',
+      sessionId: 'dev_session_123'
+    };
     next();
   });
-} else {
-  app.use(clerkMiddleware());
 }
 
 app.use('/api/webhooks', webhooksRouter);

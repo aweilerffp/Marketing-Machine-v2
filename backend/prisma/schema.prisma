@@ -8,26 +8,29 @@ datasource db {
 }
 
 model User {
-  id            String   @id @default(cuid())
-  clerkId       String   @unique
-  email         String   @unique
-  company       Company?
-  linkedinToken String?  // Encrypted LinkedIn access token
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  id                  String              @id @default(cuid())
+  clerkId             String              @unique
+  email               String              @unique
+  company             Company?
+  linkedinToken       String?             // Deprecated - use PlatformConnection
+  platformConnections PlatformConnection[]
+  createdAt           DateTime            @default(now())
+  updatedAt           DateTime            @updatedAt
 }
 
 model Company {
-  id              String   @id @default(cuid())
-  userId          String   @unique
-  user            User     @relation(fields: [userId], references: [id])
-  name            String
-  brandVoiceData  Json     // Stores all brand voice analysis
-  contentPillars  String   // JSON string for SQLite compatibility
-  postingSchedule Json     // Default posting times  
-  meetings        Meeting[]
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id                     String   @id @default(cuid())
+  userId                 String   @unique
+  user                   User     @relation(fields: [userId], references: [id])
+  name                   String
+  brandVoiceData         Json     // Stores all brand voice analysis
+  contentPillars         String   // JSON string for SQLite compatibility
+  postingSchedule        Json     // Default posting times  
+  supportedPlatforms     String   @default("[]") // JSON array of platform types
+  platformConfigurations Json? // Platform-specific settings
+  meetings               Meeting[]
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
 }
 
 model Meeting {
@@ -55,19 +58,19 @@ model ContentHook {
 }
 
 model ContentPost {
-  id             String     @id @default(cuid())
+  id             String      @id @default(cuid())
   hookId         String
   hook           ContentHook @relation(fields: [hookId], references: [id])
   content        String
   imageUrl       String?
   imagePrompt    String?
-  status         PostStatus @default(PENDING)
+  status         PostStatus  @default(PENDING)
   scheduledFor   DateTime?
   publishedAt    DateTime?
-  linkedinPostId String?
-  editHistory    Json?      // Track content edits
-  createdAt      DateTime   @default(now())
-  updatedAt      DateTime   @updatedAt
+  platformContent Json?      // Store platform-specific data (LinkedIn post IDs, etc.)
+  editHistory    Json?       // Track content edits
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
 }
 
 enum PostStatus {
@@ -76,4 +79,20 @@ enum PostStatus {
   SCHEDULED
   PUBLISHED
   REJECTED
+}
+
+model PlatformConnection {
+  id                String   @id @default(cuid())
+  userId            String
+  user              User     @relation(fields: [userId], references: [id])
+  platform          String   // 'linkedin', 'twitter', etc.
+  platformUserId    String?  // User ID on the platform
+  encryptedToken    String   // Encrypted access token
+  refreshToken      String?  // Encrypted refresh token
+  expiresAt         DateTime?
+  connectionMetadata Json?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@unique([userId, platform])
 }

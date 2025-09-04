@@ -9,7 +9,7 @@ export default function Dashboard() {
   const { isSignedIn, user } = useUser();
   const navigate = useNavigate();
   const { data: posts = [] } = useContentQueue();
-  const { isOnboarded, company } = useIsOnboarded();
+  const { isOnboarded } = useIsOnboarded();
 
   useEffect(() => {
     if (!isSignedIn) {

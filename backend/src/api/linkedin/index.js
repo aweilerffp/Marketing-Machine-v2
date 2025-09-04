@@ -1,9 +1,13 @@
 import express from 'express';
 import axios from 'axios';
 import { requireAuth, getUserId } from '../../middleware/clerk.js';
+import postingRouter from './posting.js';
 import prisma from '../../models/prisma.js';
 
 const router = express.Router();
+
+// LinkedIn posting endpoints  
+router.use('/', postingRouter);
 
 // Start LinkedIn OAuth flow
 router.get('/auth', requireAuth, (req, res) => {

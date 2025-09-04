@@ -9,13 +9,21 @@ router.get('/', requireAuth, async (req, res) => {
   try {
     const clerkId = getUserId(req);
     
-    const user = await prisma.user.findUnique({
+    let user = await prisma.user.findUnique({
       where: { clerkId },
       include: { company: true }
     });
 
+    // Just-in-time user creation: if user doesn't exist, create them
     if (!user) {
-      return res.status(404).json({ error: 'User not found' });
+      console.log(`Creating new user for Clerk ID: ${clerkId}`);
+      user = await prisma.user.create({
+        data: {
+          clerkId,
+          email: req.auth.user?.emailAddresses?.[0]?.emailAddress || `${clerkId}@example.com`
+        },
+        include: { company: true }
+      });
     }
 
     res.json(user.company);
@@ -30,20 +38,25 @@ router.get('/current', requireAuth, async (req, res) => {
   try {
     const clerkId = getUserId(req);
     
-    const user = await prisma.user.findUnique({
+    let user = await prisma.user.findUnique({
       where: { clerkId },
       include: { company: true }
     });
 
+    // Just-in-time user creation: if user doesn't exist, create them
     if (!user) {
-      return res.status(404).json({ error: 'User not found' });
+      console.log(`Creating new user for Clerk ID: ${clerkId}`);
+      user = await prisma.user.create({
+        data: {
+          clerkId,
+          email: req.auth.user?.emailAddresses?.[0]?.emailAddress || `${clerkId}@example.com`
+        },
+        include: { company: true }
+      });
     }
 
-    if (!user.company) {
-      return res.status(404).json({ error: 'Company not found' });
-    }
-
-    res.json(user.company);
+    // Return null if no company exists (onboarding needed)
+    res.json(user.company || null);
   } catch (error) {
     console.error('Company fetch error:', error);
     res.status(500).json({ error: 'Failed to get company' });
@@ -65,13 +78,21 @@ router.post('/', requireAuth, async (req, res) => {
       return res.status(400).json({ error: 'Company name is required' });
     }
 
-    const user = await prisma.user.findUnique({
+    let user = await prisma.user.findUnique({
       where: { clerkId },
       include: { company: true }
     });
 
+    // Just-in-time user creation: if user doesn't exist, create them
     if (!user) {
-      return res.status(404).json({ error: 'User not found' });
+      console.log(`Creating new user for Clerk ID: ${clerkId}`);
+      user = await prisma.user.create({
+        data: {
+          clerkId,
+          email: req.auth.user?.emailAddresses?.[0]?.emailAddress || `${clerkId}@example.com`
+        },
+        include: { company: true }
+      });
     }
 
     let company;

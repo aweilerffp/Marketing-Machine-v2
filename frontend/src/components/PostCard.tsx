@@ -2,35 +2,15 @@
 
 import { useState } from "react"
 import { Calendar, Clock, Edit3, Check, X } from "lucide-react"
-import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
-import { Checkbox } from "@/components/ui/checkbox"
-import { cn } from "@/lib/utils"
-
-type PostStatus = "pending" | "approved" | "scheduled" | "rejected"
-
-interface Post {
-  id: string
-  content: string
-  imageUrl?: string
-  imagePrompt?: string
-  status: PostStatus
-  createdAt: string
-  scheduledFor?: string | null
-  hook: {
-    id: string
-    hook: string
-    pillar?: string
-    meeting: {
-      title?: string
-      createdAt: string
-    }
-  }
-}
+import { Button } from "./ui/button"
+import { Card, CardContent, CardFooter, CardHeader } from "./ui/card"
+import { Badge } from "./ui/badge"
+import { Checkbox } from "./ui/checkbox"
+import { cn } from "../lib/utils"
+import type { ContentPost } from "../services/api"
 
 interface PostCardProps {
-  post: Post
+  post: ContentPost
   onRewrite: (postId: string) => void
   onApprove: (postId: string) => void
   onReject?: (postId: string) => void
@@ -41,22 +21,27 @@ interface PostCardProps {
 }
 
 const statusConfig = {
-  pending: {
+  PENDING: {
     label: "Pending Review",
     color: "bg-yellow-100 text-yellow-800 border-yellow-200",
     icon: Clock,
   },
-  approved: {
+  APPROVED: {
     label: "Approved",
     color: "bg-green-100 text-green-800 border-green-200",
     icon: Check,
   },
-  scheduled: {
+  SCHEDULED: {
     label: "Scheduled",
     color: "bg-blue-100 text-blue-800 border-blue-200",
     icon: Calendar,
   },
-  rejected: {
+  PUBLISHED: {
+    label: "Published",
+    color: "bg-green-100 text-green-800 border-green-200",
+    icon: Check,
+  },
+  REJECTED: {
     label: "Rejected",
     color: "bg-red-100 text-red-800 border-red-200",
     icon: X,
@@ -152,7 +137,7 @@ export function PostCard({
       </CardContent>
 
       <CardFooter className="p-4 pt-0 flex gap-2">
-        {post.status === "pending" && (
+        {post.status === "PENDING" && (
           <>
             <Button variant="outline" size="sm" onClick={() => onRewrite(post.id)} className="flex-1">
               <Edit3 className="h-3 w-3 mr-1" />
@@ -176,14 +161,14 @@ export function PostCard({
           </>
         )}
 
-        {post.status === "approved" && onSchedule && (
+        {post.status === "APPROVED" && onSchedule && (
           <Button size="sm" onClick={() => onSchedule(post.id)} className="w-full">
             <Calendar className="h-3 w-3 mr-1" />
             Schedule Post
           </Button>
         )}
 
-        {post.status === "scheduled" && (
+        {post.status === "SCHEDULED" && (
           <>
             <Button size="sm" variant="secondary" className="flex-1" disabled>
               <Calendar className="h-3 w-3 mr-1" />
@@ -196,7 +181,7 @@ export function PostCard({
           </>
         )}
 
-        {post.status === "rejected" && (
+        {post.status === "REJECTED" && (
           <Button size="sm" variant="destructive" className="w-full" disabled>
             <X className="h-3 w-3 mr-1" />
             Rejected

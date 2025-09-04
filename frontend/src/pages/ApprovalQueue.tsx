@@ -2,7 +2,6 @@ import { SignedIn, SignedOut } from '@clerk/clerk-react';
 import { useState } from 'react';
 import Navbar from '../components/layout/Navbar';
 import { useContentQueue, useUpdatePostStatus, useUpdatePostContent } from '../hooks/useContent';
-import { ContentPost } from '../services/api';
 
 export default function ApprovalQueue() {
   const [editingPost, setEditingPost] = useState<string | null>(null);

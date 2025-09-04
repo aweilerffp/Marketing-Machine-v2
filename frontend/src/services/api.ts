@@ -15,8 +15,8 @@ export const api = axios.create({
 api.interceptors.request.use(async (config) => {
   try {
     // Get Clerk token from global Clerk instance
-    if (window.Clerk?.session) {
-      const token = await window.Clerk.session.getToken();
+    if ((window as any).Clerk?.session) {
+      const token = await (window as any).Clerk.session.getToken();
       if (token) {
         config.headers.Authorization = `Bearer ${token}`;
       }
@@ -115,6 +115,12 @@ export const companyApi = {
       }
       throw error;
     }
+  },
+
+  // Create company  
+  create: async (companyData: Partial<Company>): Promise<Company> => {
+    const response = await api.post('/api/company', companyData);
+    return response.data;
   },
 
   // Create/update company

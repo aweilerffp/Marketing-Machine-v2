@@ -2,11 +2,11 @@
 
 import { useState, useEffect } from "react"
 import { Search, CheckSquare, Calendar, Settings, Sparkles } from "lucide-react"
-import { Input } from "@/components/ui/input"
-import { PostCard } from "@/components/PostCard"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Button } from "@/components/ui/button"
-import { contentApi, handleApiError, type ContentPost } from "@/services/api"
+import { Input } from "./ui/input"
+import { PostCard } from "./PostCard"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs"
+import { Button } from "./ui/button"
+import { contentApi, handleApiError, type ContentPost } from "../services/api"
 
 export function ContentQueue() {
   const [posts, setPosts] = useState<ContentPost[]>([])
@@ -87,7 +87,6 @@ export function ContentQueue() {
   })
 
   const pendingPosts = filteredPosts.filter(post => post.status === "PENDING")
-  const approvedPosts = filteredPosts.filter(post => post.status === "APPROVED") 
   const scheduledPosts = filteredPosts.filter(post => post.status === "SCHEDULED")
 
   if (isLoading) {

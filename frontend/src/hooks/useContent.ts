@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { contentApi, ContentPost, handleApiError } from '../services/api';
+import { contentApi, handleApiError } from '../services/api';
+import type { ContentPost } from '../services/api';
 
 // Query keys
 const QUERY_KEYS = {
