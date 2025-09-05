@@ -6,7 +6,9 @@ import { Input } from "./ui/input"
 import { PostCard } from "./PostCard"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs"
 import { Button } from "./ui/button"
-import { contentApi, handleApiError, type ContentPost } from "../services/api"
+import { contentApi, companyApi, handleApiError, type ContentPost } from "../services/api"
+import { RewriteModal } from "./modals/RewriteModal"
+import { SchedulingSettings } from "./SchedulingSettings"
 
 export function ContentQueue() {
   const [posts, setPosts] = useState<ContentPost[]>([])
@@ -14,6 +16,9 @@ export function ContentQueue() {
   const [searchQuery, setSearchQuery] = useState("")
   const [activeTab, setActiveTab] = useState("review")
   const [error, setError] = useState<string | null>(null)
+  const [rewriteModal, setRewriteModal] = useState<{ isOpen: boolean; postId?: string; content?: string }>({ 
+    isOpen: false 
+  })
 
   // Load posts from API
   useEffect(() => {
@@ -35,13 +40,47 @@ export function ContentQueue() {
   }
 
   const handleRewrite = (postId: string) => {
-    // TODO: Implement rewrite modal
-    console.log("Rewrite post:", postId)
+    const post = posts.find(p => p.id === postId)
+    if (post) {
+      setRewriteModal({ 
+        isOpen: true, 
+        postId, 
+        content: post.content 
+      })
+    }
+  }
+
+  const handleRewriteClose = () => {
+    setRewriteModal({ isOpen: false })
+  }
+
+  const handleRewriteSubmit = async (instructions: string): Promise<string> => {
+    if (!rewriteModal.postId) throw new Error("No post selected")
+    return await contentApi.rewriteContent(rewriteModal.postId, instructions)
+  }
+
+  const handleRewriteAccept = async (rewrittenContent: string) => {
+    if (!rewriteModal.postId) return
+    
+    try {
+      const updatedPost = await contentApi.updateContent(rewriteModal.postId, rewrittenContent)
+      setPosts(posts.map(post => 
+        post.id === rewriteModal.postId ? updatedPost : post
+      ))
+    } catch (err) {
+      const apiError = handleApiError(err)
+      setError(apiError.message)
+    }
   }
 
   const handleApprove = async (postId: string) => {
     try {
-      const updatedPost = await contentApi.updateStatus(postId, "APPROVED")
+      // Schedule for tomorrow at 9 AM as default
+      const tomorrow = new Date()
+      tomorrow.setDate(tomorrow.getDate() + 1)
+      tomorrow.setHours(9, 0, 0, 0)
+      
+      const updatedPost = await contentApi.updateStatus(postId, "SCHEDULED", tomorrow.toISOString())
       setPosts(posts.map(post => 
         post.id === postId ? updatedPost : post
       ))
@@ -66,6 +105,17 @@ export function ContentQueue() {
   const handleSchedule = (postId: string) => {
     // TODO: Implement schedule modal
     console.log("Schedule post:", postId)
+  }
+
+  const handleSchedulingSettingsSave = async (config: any) => {
+    try {
+      await companyApi.updateScheduling(config)
+      // No need for alert as the SchedulingSettings component shows feedback
+    } catch (err) {
+      const apiError = handleApiError(err)
+      setError(apiError.message)
+      throw err // Re-throw so SchedulingSettings can handle the error
+    }
   }
 
   const handleGenerateDemo = async () => {
@@ -282,16 +332,19 @@ export function ContentQueue() {
                 <h2 className="text-3xl font-bold text-foreground mb-2">Scheduling Settings</h2>
                 <p className="text-muted-foreground">Configure your content publishing preferences</p>
               </div>
-              <div className="max-w-2xl mx-auto">
-                <div className="bg-card/50 backdrop-blur-sm rounded-2xl border border-border/50 p-8">
-                  <p className="text-center text-muted-foreground">
-                    Scheduling configuration will be available in a future update.
-                  </p>
-                </div>
-              </div>
+              <SchedulingSettings onSave={handleSchedulingSettingsSave} />
             </div>
           </TabsContent>
         </Tabs>
+
+        {/* Rewrite Modal */}
+        <RewriteModal
+          isOpen={rewriteModal.isOpen}
+          onClose={handleRewriteClose}
+          originalContent={rewriteModal.content || ''}
+          onAccept={handleRewriteAccept}
+          onRewrite={handleRewriteSubmit}
+        />
       </div>
     </div>
   )

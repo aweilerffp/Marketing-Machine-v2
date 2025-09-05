@@ -68,7 +68,7 @@ export const contentApi = {
   },
 
   // Update post status (approve/reject)
-  updateStatus: async (postId: string, status: 'APPROVED' | 'REJECTED', scheduledFor?: string): Promise<ContentPost> => {
+  updateStatus: async (postId: string, status: 'APPROVED' | 'REJECTED' | 'SCHEDULED', scheduledFor?: string): Promise<ContentPost> => {
     const response = await api.put(`/api/content/${postId}/status`, {
       status,
       scheduledFor
@@ -82,6 +82,14 @@ export const contentApi = {
       content
     });
     return response.data;
+  },
+
+  // Rewrite post content with AI
+  rewriteContent: async (postId: string, instructions: string): Promise<string> => {
+    const response = await api.post(`/api/content/${postId}/rewrite`, {
+      instructions
+    });
+    return response.data.rewrittenContent;
   },
 
   // Generate demo content
@@ -126,6 +134,17 @@ export const companyApi = {
   // Create/update company
   upsert: async (companyData: Partial<Company>): Promise<Company> => {
     const response = await api.post('/api/company', companyData);
+    return response.data;
+  },
+
+  // Delete company (for reset)
+  delete: async (): Promise<void> => {
+    await api.delete('/api/company');
+  },
+
+  // Update scheduling settings
+  updateScheduling: async (config: any): Promise<{ message: string; postingSchedule: any }> => {
+    const response = await api.put('/api/company/scheduling', config);
     return response.data;
   }
 };

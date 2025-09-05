@@ -11,7 +11,10 @@ interface OnboardingData {
   industry: string;
   targetAudience: string;
   websiteContent: string;
-  samplePosts: string;
+  previousLinkedInPosts: string;
+  marketingEmails: string;
+  meetingTranscripts: string;
+  videoTranscripts: string;
   brandColors: string;
 }
 
@@ -27,7 +30,10 @@ export const BrandVoiceOnboarding: React.FC<BrandVoiceOnboardingProps> = ({ onCo
     industry: '',
     targetAudience: '',
     websiteContent: '',
-    samplePosts: '',
+    previousLinkedInPosts: '',
+    marketingEmails: '',
+    meetingTranscripts: '',
+    videoTranscripts: '',
     brandColors: ''
   });
 
@@ -51,7 +57,7 @@ export const BrandVoiceOnboarding: React.FC<BrandVoiceOnboardingProps> = ({ onCo
   };
 
   const handleNext = () => {
-    if (step < 3) {
+    if (step < 4) {
       setStep(step + 1);
     } else {
       handleSubmit();
@@ -74,7 +80,10 @@ export const BrandVoiceOnboarding: React.FC<BrandVoiceOnboardingProps> = ({ onCo
       industry: formData.industry,
       targetAudience: formData.targetAudience,
       websiteContent: formData.websiteContent,
-      samplePosts: formData.samplePosts.split('\n').filter(post => post.trim()),
+      previousLinkedInPosts: formData.previousLinkedInPosts.split('\n').filter(post => post.trim()),
+      marketingEmails: formData.marketingEmails.split('\n---\n').filter(email => email.trim()),
+      meetingTranscripts: formData.meetingTranscripts,
+      videoTranscripts: formData.videoTranscripts,
       brandColors: formData.brandColors.split(',').map(color => color.trim()),
       personality: ['professional', 'helpful', 'authoritative']
     };
@@ -97,9 +106,11 @@ export const BrandVoiceOnboarding: React.FC<BrandVoiceOnboardingProps> = ({ onCo
       case 1:
         return formData.companyName.trim() && formData.industry.trim();
       case 2:
-        return formData.targetAudience.trim() && formData.websiteContent.trim();
+        return formData.targetAudience.trim();
       case 3:
-        return true; // Optional fields
+        return formData.websiteContent.trim() || formData.previousLinkedInPosts.trim() || formData.marketingEmails.trim() || formData.meetingTranscripts.trim() || formData.videoTranscripts.trim();
+      case 4:
+        return true; // Optional brand colors
       default:
         return false;
     }
@@ -111,13 +122,13 @@ export const BrandVoiceOnboarding: React.FC<BrandVoiceOnboardingProps> = ({ onCo
         <div className="flex justify-between items-center mb-4">
           <h1 className="text-3xl font-bold">Brand Voice Setup</h1>
           <div className="text-sm text-gray-500">
-            Step {step} of 3
+            Step {step} of 4
           </div>
         </div>
         <div className="w-full bg-gray-200 rounded-full h-2">
           <div 
             className="bg-blue-600 h-2 rounded-full transition-all duration-300"
-            style={{ width: `${(step / 3) * 100}%` }}
+            style={{ width: `${(step / 4) * 100}%` }}
           ></div>
         </div>
       </div>
@@ -155,8 +166,8 @@ export const BrandVoiceOnboarding: React.FC<BrandVoiceOnboardingProps> = ({ onCo
 
       {step === 2 && (
         <div className="space-y-6">
-          <h2 className="text-2xl font-semibold">Brand Voice</h2>
-          <p className="text-gray-600">Help us understand your brand voice and target audience.</p>
+          <h2 className="text-2xl font-semibold">Target Audience</h2>
+          <p className="text-gray-600">Who is your primary audience on LinkedIn?</p>
           
           <div className="space-y-4">
             <div>
@@ -165,19 +176,8 @@ export const BrandVoiceOnboarding: React.FC<BrandVoiceOnboardingProps> = ({ onCo
                 id="targetAudience"
                 value={formData.targetAudience}
                 onChange={(e) => handleInputChange('targetAudience', e.target.value)}
-                placeholder="e.g., Business professionals, Small business owners"
+                placeholder="e.g., Business professionals, Small business owners, SaaS founders"
                 className="mt-1"
-              />
-            </div>
-
-            <div>
-              <Label htmlFor="websiteContent">Website Content *</Label>
-              <textarea
-                id="websiteContent"
-                value={formData.websiteContent}
-                onChange={(e) => handleInputChange('websiteContent', e.target.value)}
-                placeholder="Paste some content from your website to help us understand your brand voice..."
-                className="mt-1 w-full h-32 px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500"
               />
             </div>
           </div>
@@ -186,21 +186,77 @@ export const BrandVoiceOnboarding: React.FC<BrandVoiceOnboardingProps> = ({ onCo
 
       {step === 3 && (
         <div className="space-y-6">
-          <h2 className="text-2xl font-semibold">Additional Details</h2>
-          <p className="text-gray-600">Optional information to further customize your content.</p>
+          <h2 className="text-2xl font-semibold">Brand Voice Content</h2>
+          <p className="text-gray-600">
+            Provide examples of your existing content to help us learn your brand voice. 
+            <strong> At least one field is required.</strong>
+          </p>
           
-          <div className="space-y-4">
+          <div className="space-y-6">
             <div>
-              <Label htmlFor="samplePosts">Sample Social Posts</Label>
+              <Label htmlFor="websiteContent">Website Content</Label>
               <textarea
-                id="samplePosts"
-                value={formData.samplePosts}
-                onChange={(e) => handleInputChange('samplePosts', e.target.value)}
-                placeholder="Paste some existing social media posts (one per line)..."
-                className="mt-1 w-full h-32 px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500"
+                id="websiteContent"
+                value={formData.websiteContent}
+                onChange={(e) => handleInputChange('websiteContent', e.target.value)}
+                placeholder="Paste content from your website (About page, homepage, etc.)"
+                className="mt-1 w-full h-24 px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500"
               />
             </div>
 
+            <div>
+              <Label htmlFor="previousLinkedInPosts">Previous LinkedIn Posts</Label>
+              <textarea
+                id="previousLinkedInPosts"
+                value={formData.previousLinkedInPosts}
+                onChange={(e) => handleInputChange('previousLinkedInPosts', e.target.value)}
+                placeholder="Paste your successful LinkedIn posts (one per line)"
+                className="mt-1 w-full h-24 px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+
+            <div>
+              <Label htmlFor="marketingEmails">Marketing Emails</Label>
+              <textarea
+                id="marketingEmails"
+                value={formData.marketingEmails}
+                onChange={(e) => handleInputChange('marketingEmails', e.target.value)}
+                placeholder="Paste marketing emails you've sent (separate multiple emails with '---')"
+                className="mt-1 w-full h-24 px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+
+            <div>
+              <Label htmlFor="meetingTranscripts">Meeting Transcripts</Label>
+              <textarea
+                id="meetingTranscripts"
+                value={formData.meetingTranscripts}
+                onChange={(e) => handleInputChange('meetingTranscripts', e.target.value)}
+                placeholder="Paste transcripts from company meetings, customer calls, or internal discussions"
+                className="mt-1 w-full h-24 px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+
+            <div>
+              <Label htmlFor="videoTranscripts">Video Transcripts</Label>
+              <textarea
+                id="videoTranscripts"
+                value={formData.videoTranscripts}
+                onChange={(e) => handleInputChange('videoTranscripts', e.target.value)}
+                placeholder="Paste transcripts from company videos, webinars, or presentations"
+                className="mt-1 w-full h-24 px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {step === 4 && (
+        <div className="space-y-6">
+          <h2 className="text-2xl font-semibold">Brand Colors</h2>
+          <p className="text-gray-600">Optional: Add your brand colors to help with content styling.</p>
+          
+          <div className="space-y-4">
             <div>
               <Label htmlFor="brandColors">Brand Colors</Label>
               <Input
@@ -210,6 +266,9 @@ export const BrandVoiceOnboarding: React.FC<BrandVoiceOnboardingProps> = ({ onCo
                 placeholder="e.g., #1a73e8, #34a853 (comma separated)"
                 className="mt-1"
               />
+              <p className="text-sm text-gray-500 mt-1">
+                These will be used to style your LinkedIn posts and maintain brand consistency.
+              </p>
             </div>
           </div>
         </div>
@@ -228,7 +287,7 @@ export const BrandVoiceOnboarding: React.FC<BrandVoiceOnboardingProps> = ({ onCo
           onClick={handleNext}
           disabled={!canProceed() || createCompanyMutation.isPending}
         >
-          {createCompanyMutation.isPending ? 'Saving...' : (step === 3 ? 'Complete Setup' : 'Next')}
+          {createCompanyMutation.isPending ? 'Saving...' : (step === 4 ? 'Complete Setup' : 'Next')}
         </Button>
       </div>
     </div>

@@ -133,4 +133,77 @@ router.post('/', requireAuth, async (req, res) => {
   }
 });
 
+// Update scheduling settings
+router.put('/scheduling', requireAuth, async (req, res) => {
+  try {
+    const clerkId = getUserId(req);
+    const schedulingConfig = req.body;
+
+    if (!schedulingConfig) {
+      return res.status(400).json({ error: 'Scheduling configuration is required' });
+    }
+
+    let user = await prisma.user.findUnique({
+      where: { clerkId },
+      include: { company: true }
+    });
+
+    // Just-in-time user creation: if user doesn't exist, create them
+    if (!user) {
+      console.log(`Creating new user for Clerk ID: ${clerkId}`);
+      user = await prisma.user.create({
+        data: {
+          clerkId,
+          email: req.auth.user?.emailAddresses?.[0]?.emailAddress || `${clerkId}@example.com`
+        },
+        include: { company: true }
+      });
+    }
+
+    if (!user.company) {
+      return res.status(404).json({ error: 'Company profile not found. Please complete onboarding first.' });
+    }
+
+    const updatedCompany = await prisma.company.update({
+      where: { userId: user.id },
+      data: {
+        postingSchedule: schedulingConfig
+      }
+    });
+
+    res.json({ 
+      message: 'Scheduling settings updated successfully',
+      postingSchedule: updatedCompany.postingSchedule 
+    });
+  } catch (error) {
+    console.error('Scheduling update error:', error);
+    res.status(500).json({ error: 'Failed to update scheduling settings' });
+  }
+});
+
+// Delete company profile (for reset)
+router.delete('/', requireAuth, async (req, res) => {
+  try {
+    const clerkId = getUserId(req);
+    
+    const user = await prisma.user.findUnique({
+      where: { clerkId },
+      include: { company: true }
+    });
+
+    if (!user || !user.company) {
+      return res.status(404).json({ error: 'No company to delete' });
+    }
+
+    await prisma.company.delete({
+      where: { userId: user.id }
+    });
+
+    res.json({ message: 'Company deleted successfully' });
+  } catch (error) {
+    console.error('Company delete error:', error);
+    res.status(500).json({ error: 'Failed to delete company' });
+  }
+});
+
 export default router;

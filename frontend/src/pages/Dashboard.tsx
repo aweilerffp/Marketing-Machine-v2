@@ -1,40 +1,26 @@
-import { SignedIn, SignedOut, useUser } from '@clerk/clerk-react';
-import { useNavigate } from 'react-router-dom';
-import { useEffect } from 'react';
-import Navbar from '../components/layout/Navbar';
+import { useUser } from '@clerk/clerk-react';
 import { useContentQueue } from '../hooks/useContent';
-import { useIsOnboarded } from '../hooks/useCompany';
 
-export default function Dashboard() {
-  const { isSignedIn, user } = useUser();
-  const navigate = useNavigate();
+interface DashboardProps {
+  onNavigate?: (page: string) => void;
+}
+
+export default function Dashboard({ onNavigate }: DashboardProps) {
+  const { user } = useUser();
   const { data: posts = [] } = useContentQueue();
-  const { isOnboarded } = useIsOnboarded();
-
-  useEffect(() => {
-    if (!isSignedIn) {
-      navigate('/');
-    }
-  }, [isSignedIn, navigate]);
 
   // Calculate stats
-  const pendingPosts = posts.filter(post => post.status === 'PENDING').length;
+  const totalPosts = posts.length;
   const publishedPosts = posts.filter(post => post.status === 'PUBLISHED').length;
   const scheduledPosts = posts.filter(post => post.status === 'SCHEDULED').length;
-  const totalMeetings = posts.reduce((acc, post) => {
-    const meetingId = post.hook?.meeting?.title;
-    return meetingId && !acc.includes(meetingId) ? [...acc, meetingId] : acc;
-  }, [] as string[]).length;
+  
+  // Mock performance data
+  const mockImpressions = 47250;
+  const mockEngagementRate = 4.2;
+  const mockReach = 12800;
 
   return (
-    <>
-      <SignedOut>
-        <div>Redirecting...</div>
-      </SignedOut>
-      
-      <SignedIn>
-        <div className="min-h-screen bg-gray-50">
-          <Navbar />
+    <div className="min-h-screen bg-gray-50">
           
           <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
             <div className="mb-8">
@@ -45,36 +31,14 @@ export default function Dashboard() {
                 Here's your marketing content overview
               </p>
               
-              {!isOnboarded && (
-                <div className="mt-4 bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-                  <div className="flex">
-                    <div className="flex-shrink-0">
-                      <svg className="h-5 w-5 text-yellow-400" viewBox="0 0 20 20" fill="currentColor">
-                        <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
-                      </svg>
-                    </div>
-                    <div className="ml-3">
-                      <h3 className="text-sm font-medium text-yellow-800">
-                        Complete your onboarding
-                      </h3>
-                      <p className="mt-1 text-sm text-yellow-700">
-                        Set up your brand voice and content preferences to start generating LinkedIn posts from your meetings.
-                      </p>
-                      <button
-                        onClick={() => navigate('/onboarding')}
-                        className="mt-3 bg-yellow-100 text-yellow-800 px-3 py-1 rounded text-sm hover:bg-yellow-200"
-                      >
-                        Complete Setup
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              )}
             </div>
 
             {/* Stats Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-              <div className="bg-white rounded-lg p-6 border border-gray-200">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
+              <button 
+                onClick={() => onNavigate && onNavigate('content')}
+                className="bg-white rounded-lg p-6 border border-gray-200 hover:border-blue-300 hover:shadow-md transition-all text-left"
+              >
                 <div className="flex items-center">
                   <div className="p-2 bg-blue-100 rounded-lg">
                     <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -82,8 +46,23 @@ export default function Dashboard() {
                     </svg>
                   </div>
                   <div className="ml-4">
-                    <p className="text-sm font-medium text-gray-600">Pending Posts</p>
-                    <p className="text-2xl font-bold text-gray-900">{pendingPosts}</p>
+                    <p className="text-sm font-medium text-gray-600">Total Posts</p>
+                    <p className="text-2xl font-bold text-gray-900">{totalPosts}</p>
+                    <p className="text-xs text-blue-600 mt-1">View all posts →</p>
+                  </div>
+                </div>
+              </button>
+
+              <div className="bg-white rounded-lg p-6 border border-gray-200">
+                <div className="flex items-center">
+                  <div className="p-2 bg-purple-100 rounded-lg">
+                    <svg className="w-6 h-6 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                  </div>
+                  <div className="ml-4">
+                    <p className="text-sm font-medium text-gray-600">Scheduled Posts</p>
+                    <p className="text-2xl font-bold text-gray-900">{scheduledPosts}</p>
                   </div>
                 </div>
               </div>
@@ -96,36 +75,8 @@ export default function Dashboard() {
                     </svg>
                   </div>
                   <div className="ml-4">
-                    <p className="text-sm font-medium text-gray-600">Published</p>
+                    <p className="text-sm font-medium text-gray-600">Published Posts</p>
                     <p className="text-2xl font-bold text-gray-900">{publishedPosts}</p>
-                  </div>
-                </div>
-              </div>
-
-              <div className="bg-white rounded-lg p-6 border border-gray-200">
-                <div className="flex items-center">
-                  <div className="p-2 bg-purple-100 rounded-lg">
-                    <svg className="w-6 h-6 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                  </div>
-                  <div className="ml-4">
-                    <p className="text-sm font-medium text-gray-600">Scheduled</p>
-                    <p className="text-2xl font-bold text-gray-900">{scheduledPosts}</p>
-                  </div>
-                </div>
-              </div>
-
-              <div className="bg-white rounded-lg p-6 border border-gray-200">
-                <div className="flex items-center">
-                  <div className="p-2 bg-orange-100 rounded-lg">
-                    <svg className="w-6 h-6 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                    </svg>
-                  </div>
-                  <div className="ml-4">
-                    <p className="text-sm font-medium text-gray-600">Meetings</p>
-                    <p className="text-2xl font-bold text-gray-900">{totalMeetings}</p>
                   </div>
                 </div>
               </div>
@@ -136,7 +87,7 @@ export default function Dashboard() {
               <h2 className="text-xl font-semibold text-gray-900 mb-4">Quick Actions</h2>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <button 
-                  onClick={() => navigate('/queue')}
+                  onClick={() => onNavigate && onNavigate('content')}
                   className="p-4 text-left rounded-lg border border-gray-200 hover:border-blue-300 hover:bg-blue-50 transition-colors"
                 >
                   <h3 className="font-medium text-gray-900 mb-2">Review Content</h3>
@@ -144,7 +95,7 @@ export default function Dashboard() {
                 </button>
                 
                 <button 
-                  onClick={() => navigate('/settings')}
+                  onClick={() => onNavigate && onNavigate('settings')}
                   className="p-4 text-left rounded-lg border border-gray-200 hover:border-green-300 hover:bg-green-50 transition-colors"
                 >
                   <h3 className="font-medium text-gray-900 mb-2">Settings</h3>
@@ -152,29 +103,120 @@ export default function Dashboard() {
                 </button>
                 
                 <button 
-                  onClick={() => navigate('/onboarding')}
+                  onClick={() => onNavigate && onNavigate('company')}
                   className="p-4 text-left rounded-lg border border-gray-200 hover:border-purple-300 hover:bg-purple-50 transition-colors"
                 >
-                  <h3 className="font-medium text-gray-900 mb-2">Setup</h3>
-                  <p className="text-sm text-gray-600">Complete company onboarding</p>
+                  <h3 className="font-medium text-gray-900 mb-2">Company Setup</h3>
+                  <p className="text-sm text-gray-600">Configure company settings</p>
                 </button>
               </div>
             </div>
 
-            {/* Recent Activity */}
-            <div className="bg-white rounded-lg border border-gray-200 p-6">
-              <h2 className="text-xl font-semibold text-gray-900 mb-4">Recent Activity</h2>
-              <div className="text-center py-12">
-                <svg className="mx-auto h-12 w-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414a1 1 0 00-.707-.293H8" />
-                </svg>
-                <p className="text-gray-500 mt-2">No activity yet</p>
-                <p className="text-sm text-gray-400">Connect Read.ai to start generating content</p>
+            {/* Performance Metrics */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
+              {/* Key Metrics */}
+              <div className="bg-white rounded-lg border border-gray-200 p-6">
+                <h2 className="text-xl font-semibold text-gray-900 mb-6">Performance Overview</h2>
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between p-4 bg-blue-50 rounded-lg">
+                    <div className="flex items-center">
+                      <div className="p-2 bg-blue-100 rounded-lg">
+                        <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                        </svg>
+                      </div>
+                      <div className="ml-3">
+                        <p className="text-sm font-medium text-gray-700">Total Impressions</p>
+                        <p className="text-lg font-bold text-gray-900">{mockImpressions.toLocaleString()}</p>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-xs text-green-600 font-medium">+12.3%</p>
+                      <p className="text-xs text-gray-500">vs last month</p>
+                    </div>
+                  </div>
+                  
+                  <div className="flex items-center justify-between p-4 bg-green-50 rounded-lg">
+                    <div className="flex items-center">
+                      <div className="p-2 bg-green-100 rounded-lg">
+                        <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+                        </svg>
+                      </div>
+                      <div className="ml-3">
+                        <p className="text-sm font-medium text-gray-700">Engagement Rate</p>
+                        <p className="text-lg font-bold text-gray-900">{mockEngagementRate}%</p>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-xs text-green-600 font-medium">+2.1%</p>
+                      <p className="text-xs text-gray-500">vs last month</p>
+                    </div>
+                  </div>
+                  
+                  <div className="flex items-center justify-between p-4 bg-purple-50 rounded-lg">
+                    <div className="flex items-center">
+                      <div className="p-2 bg-purple-100 rounded-lg">
+                        <svg className="w-5 h-5 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                        </svg>
+                      </div>
+                      <div className="ml-3">
+                        <p className="text-sm font-medium text-gray-700">Total Reach</p>
+                        <p className="text-lg font-bold text-gray-900">{mockReach.toLocaleString()}</p>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-xs text-green-600 font-medium">+8.7%</p>
+                      <p className="text-xs text-gray-500">vs last month</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Simple Chart */}
+              <div className="bg-white rounded-lg border border-gray-200 p-6">
+                <h2 className="text-xl font-semibold text-gray-900 mb-6">Content & Impressions Trend</h2>
+                <div className="space-y-4">
+                  <div className="flex justify-between text-sm text-gray-600 mb-4">
+                    <span>Last 7 days</span>
+                    <span>Impressions per day</span>
+                  </div>
+                  
+                  {/* Simple bar chart */}
+                  <div className="space-y-3">
+                    {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((day, index) => {
+                      const height = Math.floor(Math.random() * 60) + 20;
+                      const impressions = Math.floor(Math.random() * 8000) + 3000;
+                      const posts = Math.floor(Math.random() * 3) + 1;
+                      return (
+                        <div key={day} className="flex items-center space-x-3">
+                          <div className="w-8 text-xs text-gray-500">{day}</div>
+                          <div className="flex-1 flex items-center space-x-2">
+                            <div 
+                              className="bg-blue-200 rounded-sm transition-all hover:bg-blue-300" 
+                              style={{height: '16px', width: `${height}%`}}
+                            ></div>
+                            <div className="text-xs text-gray-600 min-w-0">
+                              {impressions.toLocaleString()} ({posts} post{posts !== 1 ? 's' : ''})
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  
+                  <div className="pt-4 border-t border-gray-100">
+                    <div className="flex justify-between text-sm">
+                      <span className="text-gray-500">Weekly Average</span>
+                      <span className="font-medium text-gray-900">6,750 impressions/day</span>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
           </main>
         </div>
-      </SignedIn>
-    </>
   );
 }

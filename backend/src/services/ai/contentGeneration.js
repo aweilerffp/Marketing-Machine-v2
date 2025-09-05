@@ -185,3 +185,83 @@ What's the biggest listing challenge you're facing right now? 👇`,
   console.log('🤖 Generated mock LinkedIn post (no AI key)');
   return post;
 }
+
+/**
+ * Rewrite existing content based on user instructions
+ * @param {string} originalContent - The original content to rewrite
+ * @param {string} instructions - How to rewrite the content
+ * @param {object} brandVoiceData - Company's brand voice data
+ * @returns {Promise<string>} Rewritten content
+ */
+export async function rewriteContent(originalContent, instructions, brandVoiceData) {
+  // If no OpenAI key, return mock data
+  if (!openai || !process.env.OPENAI_API_KEY || process.env.OPENAI_API_KEY === 'your_openai_api_key_here') {
+    console.log('🤖 Using mock AI rewrite - no OpenAI key configured');
+    return getMockRewrite(originalContent, instructions);
+  }
+
+  try {
+    const prompt = `
+You are a LinkedIn content editor for ${brandVoiceData.industry || 'technology'} companies.
+
+Company Context:
+- Industry: ${brandVoiceData.industry || 'Technology'}
+- Target Audience: ${brandVoiceData.targetAudience || 'Business professionals'}
+- Brand Voice: Professional, helpful, and authoritative
+
+Original Content:
+${originalContent}
+
+Rewrite Instructions:
+${instructions}
+
+Please rewrite the content following the instructions while maintaining the company's brand voice and ensuring it's engaging for LinkedIn. Keep it professional and valuable to the target audience.
+
+Return only the rewritten content, no explanations or additional text.
+`;
+
+    const completion = await openai.chat.completions.create({
+      model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
+      messages: [
+        { role: 'system', content: 'You are a LinkedIn content editor that rewrites posts based on specific instructions while maintaining brand voice.' },
+        { role: 'user', content: prompt }
+      ],
+      max_tokens: 1000,
+      temperature: 0.7
+    });
+
+    const rewrittenContent = completion.choices[0].message.content.trim();
+    return rewrittenContent;
+  } catch (error) {
+    console.error('Error rewriting content with AI:', error);
+    return getMockRewrite(originalContent, instructions);
+  }
+}
+
+/**
+ * Mock content rewrite for when OpenAI is not available
+ */
+function getMockRewrite(originalContent, instructions) {
+  const mockRewrites = {
+    'professional': 'In today\'s competitive business landscape, organizations that prioritize strategic innovation and data-driven decision-making consistently outperform their peers. Here are the key insights every executive should consider...',
+    'shorter': originalContent.length > 100 ? originalContent.substring(0, 100) + '...' : originalContent,
+    'statistics': originalContent + '\n\n📊 According to recent studies, 73% of companies implementing these strategies see a 25% increase in efficiency.',
+    'casual': originalContent.replace(/\./g, '!').replace(/However,/g, 'But hey,').replace(/Therefore,/g, 'So,'),
+    'default': `✨ Here's an improved version:\n\n${originalContent}\n\n💡 This approach has proven successful for many industry leaders.`
+  };
+
+  // Simple keyword matching for mock responses
+  const lowerInstructions = instructions.toLowerCase();
+  
+  if (lowerInstructions.includes('professional')) {
+    return mockRewrites.professional;
+  } else if (lowerInstructions.includes('short')) {
+    return mockRewrites.shorter;
+  } else if (lowerInstructions.includes('statistic') || lowerInstructions.includes('number')) {
+    return mockRewrites.statistics;
+  } else if (lowerInstructions.includes('casual') || lowerInstructions.includes('friendly')) {
+    return mockRewrites.casual;
+  } else {
+    return mockRewrites.default;
+  }
+}
