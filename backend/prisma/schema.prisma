@@ -28,6 +28,8 @@ model Company {
   postingSchedule        Json     // Default posting times  
   supportedPlatforms     String   @default("[]") // JSON array of platform types
   platformConfigurations Json? // Platform-specific settings
+  webhookToken           String?  @unique // Secret token for Read.ai webhook authentication
+  webhookActive          Boolean  @default(true) // Allow enabling/disabling webhook processing
   meetings               Meeting[]
   createdAt              DateTime @default(now())
   updatedAt              DateTime @updatedAt

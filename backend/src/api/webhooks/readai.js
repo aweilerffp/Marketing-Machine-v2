@@ -9,6 +9,30 @@ router.post('/', async (req, res) => {
   try {
     console.log('📥 Received Read.ai webhook:', req.body);
     
+    const { companyId, token } = req.params;
+    let targetCompany = null;
+
+    // Token-based authentication (new secure method)
+    if (companyId && token) {
+      targetCompany = await prisma.company.findFirst({
+        where: {
+          id: companyId,
+          webhookToken: token,
+          webhookActive: true
+        },
+        include: { user: true }
+      });
+
+      if (!targetCompany) {
+        console.log(`❌ Invalid webhook token for company ${companyId}`);
+        return res.status(401).json({ 
+          error: 'Invalid webhook token or webhook is disabled' 
+        });
+      }
+
+      console.log(`🔐 Token validated for company: ${targetCompany.name}`);
+    }
+    
     const { 
       session_id,
       trigger,
@@ -64,7 +88,10 @@ router.post('/', async (req, res) => {
       owner: owner || null,
       participants: participants || [],
       reportUrl: report_url || null,
-      receivedAt: new Date().toISOString()
+      receivedAt: new Date().toISOString(),
+      // Include company information if authenticated via token
+      companyId: targetCompany?.id || null,
+      companyName: targetCompany?.name || null
     };
 
     await transcriptQueue.add('process-transcript', jobData, {

@@ -186,7 +186,7 @@ export default function Dashboard({ onNavigate }: DashboardProps) {
                   
                   {/* Simple bar chart */}
                   <div className="space-y-3">
-                    {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((day, index) => {
+                    {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((day) => {
                       const height = Math.floor(Math.random() * 60) + 20;
                       const impressions = Math.floor(Math.random() * 8000) + 3000;
                       const posts = Math.floor(Math.random() * 3) + 1;

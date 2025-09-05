@@ -4,6 +4,9 @@ import { companyApi } from '../services/api';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
+import { SchedulingSettings } from './SchedulingSettings';
+import { WebhookIntegrations } from './WebhookIntegrations';
 
 interface CompanySettingsProps {
   onBack?: () => void;
@@ -11,6 +14,7 @@ interface CompanySettingsProps {
 
 export const CompanySettings: React.FC<CompanySettingsProps> = ({ onBack }) => {
   const [isEditing, setIsEditing] = useState(false);
+  const [activeTab, setActiveTab] = useState('company');
   const [formData, setFormData] = useState({
     companyName: '',
     industry: '',
@@ -39,6 +43,15 @@ export const CompanySettings: React.FC<CompanySettingsProps> = ({ onBack }) => {
       alert('❌ Error updating company settings. Please try again.');
     }
   });
+
+  // Handle scheduling settings save
+  const handleSchedulingSettingsSave = async (config: any) => {
+    try {
+      await companyApi.updateScheduling(config);
+    } catch (err) {
+      throw err;
+    }
+  };
 
   // Populate form when company data loads
   useEffect(() => {
@@ -92,7 +105,7 @@ export const CompanySettings: React.FC<CompanySettingsProps> = ({ onBack }) => {
     return (
       <div className="flex items-center justify-center py-12">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-        <span className="ml-3 text-gray-600">Loading company settings...</span>
+        <span className="ml-3 text-gray-600">Loading settings...</span>
       </div>
     );
   }
@@ -118,8 +131,8 @@ export const CompanySettings: React.FC<CompanySettingsProps> = ({ onBack }) => {
       <div className="mb-6">
         <div className="flex justify-between items-center">
           <div>
-            <h1 className="text-3xl font-bold text-gray-900">Company Settings</h1>
-            <p className="text-gray-600 mt-1">Manage your brand voice and company information</p>
+            <h1 className="text-3xl font-bold text-gray-900">Settings</h1>
+            <p className="text-gray-600 mt-1">Manage your brand voice, company information, and scheduling preferences</p>
           </div>
           <div className="flex space-x-3">
             {onBack && (
@@ -141,9 +154,9 @@ export const CompanySettings: React.FC<CompanySettingsProps> = ({ onBack }) => {
                     });
                     console.log('Company data reset successful');
                     window.location.reload();
-                  } catch (error) {
+                  } catch (error: any) {
                     console.error('Reset error:', error);
-                    alert(`Error resetting onboarding: ${error.message || error}`);
+                    alert(`Error resetting onboarding: ${error?.message || error}`);
                   }
                 }
               }}
@@ -187,123 +200,144 @@ export const CompanySettings: React.FC<CompanySettingsProps> = ({ onBack }) => {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        {/* Company Information */}
-        <div className="space-y-6">
-          <h2 className="text-xl font-semibold text-gray-900">Company Information</h2>
-          
-          <div className="space-y-4">
-            <div>
-              <Label htmlFor="companyName">Company Name</Label>
-              {isEditing ? (
-                <Input
-                  id="companyName"
-                  value={formData.companyName}
-                  onChange={(e) => handleInputChange('companyName', e.target.value)}
-                  className="mt-1"
-                />
-              ) : (
-                <p className="mt-1 text-gray-900">{company.name}</p>
-              )}
-            </div>
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-8">
+        <TabsList className="grid w-full grid-cols-4">
+          <TabsTrigger value="company">Company Profile</TabsTrigger>
+          <TabsTrigger value="brand">Brand Voice</TabsTrigger>
+          <TabsTrigger value="scheduling">Scheduling</TabsTrigger>
+          <TabsTrigger value="integrations">Integrations</TabsTrigger>
+        </TabsList>
 
-            <div>
-              <Label htmlFor="industry">Industry</Label>
-              {isEditing ? (
-                <Input
-                  id="industry"
-                  value={formData.industry}
-                  onChange={(e) => handleInputChange('industry', e.target.value)}
-                  className="mt-1"
-                />
-              ) : (
-                <p className="mt-1 text-gray-900">{company.brandVoiceData?.industry || 'Not specified'}</p>
-              )}
-            </div>
+        <TabsContent value="company" className="space-y-6">
+          <div className="space-y-6">
+            <h2 className="text-xl font-semibold text-gray-900">Company Information</h2>
+            
+            <div className="space-y-4">
+              <div>
+                <Label htmlFor="companyName">Company Name</Label>
+                {isEditing ? (
+                  <Input
+                    id="companyName"
+                    value={formData.companyName}
+                    onChange={(e) => handleInputChange('companyName', e.target.value)}
+                    className="mt-1"
+                  />
+                ) : (
+                  <p className="mt-1 text-gray-900">{company.name}</p>
+                )}
+              </div>
 
-            <div>
-              <Label htmlFor="targetAudience">Target Audience</Label>
-              {isEditing ? (
-                <Input
-                  id="targetAudience"
-                  value={formData.targetAudience}
-                  onChange={(e) => handleInputChange('targetAudience', e.target.value)}
-                  className="mt-1"
-                />
-              ) : (
-                <p className="mt-1 text-gray-900">{company.brandVoiceData?.targetAudience || 'Not specified'}</p>
-              )}
+              <div>
+                <Label htmlFor="industry">Industry</Label>
+                {isEditing ? (
+                  <Input
+                    id="industry"
+                    value={formData.industry}
+                    onChange={(e) => handleInputChange('industry', e.target.value)}
+                    className="mt-1"
+                  />
+                ) : (
+                  <p className="mt-1 text-gray-900">{company.brandVoiceData?.industry || 'Not specified'}</p>
+                )}
+              </div>
+
+              <div>
+                <Label htmlFor="targetAudience">Target Audience</Label>
+                {isEditing ? (
+                  <Input
+                    id="targetAudience"
+                    value={formData.targetAudience}
+                    onChange={(e) => handleInputChange('targetAudience', e.target.value)}
+                    className="mt-1"
+                  />
+                ) : (
+                  <p className="mt-1 text-gray-900">{company.brandVoiceData?.targetAudience || 'Not specified'}</p>
+                )}
+              </div>
             </div>
           </div>
-        </div>
+        </TabsContent>
 
-        {/* Brand Voice */}
-        <div className="space-y-6">
-          <h2 className="text-xl font-semibold text-gray-900">Brand Voice</h2>
-          
-          <div className="space-y-4">
-            <div>
-              <Label htmlFor="websiteContent">Website Content Sample</Label>
-              {isEditing ? (
-                <textarea
-                  id="websiteContent"
-                  value={formData.websiteContent}
-                  onChange={(e) => handleInputChange('websiteContent', e.target.value)}
-                  className="mt-1 w-full h-24 px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500"
-                  placeholder="Paste content from your website..."
-                />
-              ) : (
-                <p className="mt-1 text-gray-900 text-sm">
-                  {company.brandVoiceData?.websiteContent 
-                    ? `${company.brandVoiceData.websiteContent.substring(0, 200)}...`
-                    : 'Not specified'
-                  }
-                </p>
-              )}
-            </div>
+        <TabsContent value="brand" className="space-y-6">
+          <div className="space-y-6">
+            <h2 className="text-xl font-semibold text-gray-900">Brand Voice</h2>
+            
+            <div className="space-y-4">
+              <div>
+                <Label htmlFor="websiteContent">Website Content Sample</Label>
+                {isEditing ? (
+                  <textarea
+                    id="websiteContent"
+                    value={formData.websiteContent}
+                    onChange={(e) => handleInputChange('websiteContent', e.target.value)}
+                    className="mt-1 w-full h-24 px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500"
+                    placeholder="Paste content from your website..."
+                  />
+                ) : (
+                  <p className="mt-1 text-gray-900 text-sm">
+                    {company.brandVoiceData?.websiteContent 
+                      ? `${company.brandVoiceData.websiteContent.substring(0, 200)}...`
+                      : 'Not specified'
+                    }
+                  </p>
+                )}
+              </div>
 
-            <div>
-              <Label htmlFor="samplePosts">Sample Social Posts</Label>
-              {isEditing ? (
-                <textarea
-                  id="samplePosts"
-                  value={formData.samplePosts}
-                  onChange={(e) => handleInputChange('samplePosts', e.target.value)}
-                  className="mt-1 w-full h-24 px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500"
-                  placeholder="One post per line..."
-                />
-              ) : (
-                <div className="mt-1 text-gray-900 text-sm">
-                  {company.brandVoiceData?.samplePosts?.length > 0 
-                    ? `${company.brandVoiceData.samplePosts.length} sample posts`
-                    : 'Not specified'
-                  }
-                </div>
-              )}
-            </div>
+              <div>
+                <Label htmlFor="samplePosts">Sample Social Posts</Label>
+                {isEditing ? (
+                  <textarea
+                    id="samplePosts"
+                    value={formData.samplePosts}
+                    onChange={(e) => handleInputChange('samplePosts', e.target.value)}
+                    className="mt-1 w-full h-24 px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500"
+                    placeholder="One post per line..."
+                  />
+                ) : (
+                  <div className="mt-1 text-gray-900 text-sm">
+                    {company.brandVoiceData?.samplePosts?.length > 0 
+                      ? `${company.brandVoiceData.samplePosts.length} sample posts`
+                      : 'Not specified'
+                    }
+                  </div>
+                )}
+              </div>
 
-            <div>
-              <Label htmlFor="brandColors">Brand Colors</Label>
-              {isEditing ? (
-                <Input
-                  id="brandColors"
-                  value={formData.brandColors}
-                  onChange={(e) => handleInputChange('brandColors', e.target.value)}
-                  placeholder="#1a73e8, #34a853"
-                  className="mt-1"
-                />
-              ) : (
-                <p className="mt-1 text-gray-900">
-                  {company.brandVoiceData?.brandColors?.length > 0 
-                    ? company.brandVoiceData.brandColors.join(', ')
-                    : 'Not specified'
-                  }
-                </p>
-              )}
+              <div>
+                <Label htmlFor="brandColors">Brand Colors</Label>
+                {isEditing ? (
+                  <Input
+                    id="brandColors"
+                    value={formData.brandColors}
+                    onChange={(e) => handleInputChange('brandColors', e.target.value)}
+                    placeholder="#1a73e8, #34a853"
+                    className="mt-1"
+                  />
+                ) : (
+                  <p className="mt-1 text-gray-900">
+                    {company.brandVoiceData?.brandColors?.length > 0 
+                      ? company.brandVoiceData.brandColors.join(', ')
+                      : 'Not specified'
+                    }
+                  </p>
+                )}
+              </div>
             </div>
           </div>
-        </div>
-      </div>
+        </TabsContent>
+
+        <TabsContent value="scheduling" className="space-y-6">
+          <div className="space-y-6">
+            <h2 className="text-xl font-semibold text-gray-900">Scheduling Preferences</h2>
+            <p className="text-gray-600">Configure how often and when your content should be posted</p>
+            <SchedulingSettings onSave={handleSchedulingSettingsSave} />
+          </div>
+        </TabsContent>
+
+        <TabsContent value="integrations" className="space-y-6">
+          <WebhookIntegrations />
+        </TabsContent>
+      </Tabs>
 
       {/* Stats */}
       <div className="mt-8 grid grid-cols-1 md:grid-cols-3 gap-4">

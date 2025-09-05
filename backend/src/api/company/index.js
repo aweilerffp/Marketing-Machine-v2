@@ -1,6 +1,7 @@
 import express from 'express';
 import { requireAuth, getUserId } from '../../middleware/clerk.js';
 import prisma from '../../models/prisma.js';
+import crypto from 'crypto';
 
 const router = express.Router();
 
@@ -203,6 +204,150 @@ router.delete('/', requireAuth, async (req, res) => {
   } catch (error) {
     console.error('Company delete error:', error);
     res.status(500).json({ error: 'Failed to delete company' });
+  }
+});
+
+// ========================
+// WEBHOOK MANAGEMENT ENDPOINTS
+// ========================
+
+// Get current webhook URL for company
+router.get('/webhook', requireAuth, async (req, res) => {
+  try {
+    const clerkId = getUserId(req);
+    
+    const user = await prisma.user.findUnique({
+      where: { clerkId },
+      include: { company: true }
+    });
+
+    if (!user || !user.company) {
+      return res.status(404).json({ error: 'Company profile not found. Please complete onboarding first.' });
+    }
+
+    const company = user.company;
+    
+    // If no webhook token exists, return null
+    if (!company.webhookToken) {
+      return res.json({ 
+        webhookUrl: null,
+        isActive: false,
+        instructions: 'Generate a webhook URL to start receiving Read.ai notifications'
+      });
+    }
+
+    // Generate the full webhook URL
+    let baseUrl;
+    if (process.env.NGROK_URL) {
+      // Use ngrok URL for development testing
+      baseUrl = process.env.NGROK_URL;
+    } else {
+      baseUrl = process.env.FRONTEND_URL?.replace(':5173', ':3001') || 'http://localhost:3001';
+    }
+    const webhookUrl = `${baseUrl}/api/webhooks/readai/${company.id}/${company.webhookToken}`;
+
+    res.json({
+      webhookUrl,
+      isActive: company.webhookActive,
+      companyId: company.id,
+      tokenPreview: `${company.webhookToken.substring(0, 8)}...`
+    });
+
+  } catch (error) {
+    console.error('Webhook fetch error:', error);
+    res.status(500).json({ error: 'Failed to get webhook configuration' });
+  }
+});
+
+// Generate or regenerate webhook URL
+router.post('/webhook/generate', requireAuth, async (req, res) => {
+  try {
+    const clerkId = getUserId(req);
+    
+    const user = await prisma.user.findUnique({
+      where: { clerkId },
+      include: { company: true }
+    });
+
+    if (!user || !user.company) {
+      return res.status(404).json({ error: 'Company profile not found. Please complete onboarding first.' });
+    }
+
+    // Generate cryptographically secure random token
+    const webhookToken = crypto.randomBytes(32).toString('hex');
+
+    // Update company with new webhook token
+    const updatedCompany = await prisma.company.update({
+      where: { id: user.company.id },
+      data: {
+        webhookToken,
+        webhookActive: true
+      }
+    });
+
+    // Generate the full webhook URL
+    let baseUrl;
+    if (process.env.NGROK_URL) {
+      // Use ngrok URL for development testing
+      baseUrl = process.env.NGROK_URL;
+    } else {
+      baseUrl = process.env.FRONTEND_URL?.replace(':5173', ':3001') || 'http://localhost:3001';
+    }
+    const webhookUrl = `${baseUrl}/api/webhooks/readai/${updatedCompany.id}/${webhookToken}`;
+
+    console.log(`🔗 Generated webhook URL for company ${updatedCompany.name}: ${webhookUrl.replace(webhookToken, 'TOKEN_HIDDEN')}`);
+
+    res.json({
+      webhookUrl,
+      isActive: updatedCompany.webhookActive,
+      companyId: updatedCompany.id,
+      tokenPreview: `${webhookToken.substring(0, 8)}...`,
+      message: 'Webhook URL generated successfully! Copy this URL to your Read.ai webhook configuration.'
+    });
+
+  } catch (error) {
+    console.error('Webhook generation error:', error);
+    res.status(500).json({ error: 'Failed to generate webhook URL' });
+  }
+});
+
+// Toggle webhook active/inactive
+router.put('/webhook/toggle', requireAuth, async (req, res) => {
+  try {
+    const clerkId = getUserId(req);
+    
+    const user = await prisma.user.findUnique({
+      where: { clerkId },
+      include: { company: true }
+    });
+
+    if (!user || !user.company) {
+      return res.status(404).json({ error: 'Company profile not found. Please complete onboarding first.' });
+    }
+
+    if (!user.company.webhookToken) {
+      return res.status(400).json({ error: 'No webhook URL exists. Generate one first.' });
+    }
+
+    // Toggle the active state
+    const updatedCompany = await prisma.company.update({
+      where: { id: user.company.id },
+      data: {
+        webhookActive: !user.company.webhookActive
+      }
+    });
+
+    const action = updatedCompany.webhookActive ? 'activated' : 'deactivated';
+    console.log(`🔄 Webhook ${action} for company ${updatedCompany.name}`);
+
+    res.json({
+      isActive: updatedCompany.webhookActive,
+      message: `Webhook ${action} successfully`
+    });
+
+  } catch (error) {
+    console.error('Webhook toggle error:', error);
+    res.status(500).json({ error: 'Failed to toggle webhook status' });
   }
 });
 

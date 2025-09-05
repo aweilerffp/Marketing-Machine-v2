@@ -29,8 +29,7 @@ router.get('/queue', requireAuth, async (req, res) => {
           meeting: {
             companyId: user.company.id
           }
-        },
-        status: 'PENDING'
+        }
       },
       include: {
         hook: {

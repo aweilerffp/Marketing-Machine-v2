@@ -146,6 +146,37 @@ export const companyApi = {
   updateScheduling: async (config: any): Promise<{ message: string; postingSchedule: any }> => {
     const response = await api.put('/api/company/scheduling', config);
     return response.data;
+  },
+
+  // Webhook management
+  getWebhook: async (): Promise<{
+    webhookUrl: string | null;
+    isActive: boolean;
+    companyId?: string;
+    tokenPreview?: string;
+    instructions?: string;
+  }> => {
+    const response = await api.get('/api/company/webhook');
+    return response.data;
+  },
+
+  generateWebhook: async (): Promise<{
+    webhookUrl: string;
+    isActive: boolean;
+    companyId: string;
+    tokenPreview: string;
+    message: string;
+  }> => {
+    const response = await api.post('/api/company/webhook/generate');
+    return response.data;
+  },
+
+  toggleWebhook: async (): Promise<{
+    isActive: boolean;
+    message: string;
+  }> => {
+    const response = await api.put('/api/company/webhook/toggle');
+    return response.data;
   }
 };
 

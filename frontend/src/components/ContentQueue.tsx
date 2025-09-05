@@ -1,14 +1,13 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Search, CheckSquare, Calendar, Settings, Sparkles } from "lucide-react"
+import { Search, CheckSquare, Calendar, X, Sparkles } from "lucide-react"
 import { Input } from "./ui/input"
 import { PostCard } from "./PostCard"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs"
 import { Button } from "./ui/button"
-import { contentApi, companyApi, handleApiError, type ContentPost } from "../services/api"
+import { contentApi, handleApiError, type ContentPost } from "../services/api"
 import { RewriteModal } from "./modals/RewriteModal"
-import { SchedulingSettings } from "./SchedulingSettings"
 
 export function ContentQueue() {
   const [posts, setPosts] = useState<ContentPost[]>([])
@@ -107,16 +106,6 @@ export function ContentQueue() {
     console.log("Schedule post:", postId)
   }
 
-  const handleSchedulingSettingsSave = async (config: any) => {
-    try {
-      await companyApi.updateScheduling(config)
-      // No need for alert as the SchedulingSettings component shows feedback
-    } catch (err) {
-      const apiError = handleApiError(err)
-      setError(apiError.message)
-      throw err // Re-throw so SchedulingSettings can handle the error
-    }
-  }
 
   const handleGenerateDemo = async () => {
     try {
@@ -138,6 +127,7 @@ export function ContentQueue() {
 
   const pendingPosts = filteredPosts.filter(post => post.status === "PENDING")
   const scheduledPosts = filteredPosts.filter(post => post.status === "SCHEDULED")
+  const rejectedPosts = filteredPosts.filter(post => post.status === "REJECTED")
 
   if (isLoading) {
     return (
@@ -181,31 +171,45 @@ export function ContentQueue() {
         )}
 
         {/* Queue Statistics */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-16">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-16">
           <div className="bg-card/50 backdrop-blur-sm rounded-2xl border border-border/50 p-8 shadow-lg hover:shadow-xl transition-all duration-300">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-muted-foreground mb-2">Needs Review</p>
-                <p className="text-4xl font-bold text-primary">
+                <p className="text-3xl font-bold text-primary">
                   {pendingPosts.length}
                 </p>
               </div>
-              <div className="h-16 w-16 bg-primary/10 rounded-2xl flex items-center justify-center">
-                <CheckSquare className="h-8 w-8 text-primary" />
+              <div className="h-12 w-12 bg-primary/10 rounded-2xl flex items-center justify-center">
+                <CheckSquare className="h-6 w-6 text-primary" />
               </div>
             </div>
           </div>
 
-          <div className="bg-card/50 backdrop-blur-sm rounded-2xl border border-border/50 p-8 shadow-lg hover:shadow-xl transition-all duration-300">
+          <div className="bg-card/50 backdrop-blur-sm rounded-2xl border border-border/50 p-6 shadow-lg hover:shadow-xl transition-all duration-300">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-muted-foreground mb-2">Scheduled</p>
-                <p className="text-4xl font-bold text-secondary">
+                <p className="text-3xl font-bold text-secondary">
                   {scheduledPosts.length}
                 </p>
               </div>
-              <div className="h-16 w-16 bg-secondary/10 rounded-2xl flex items-center justify-center">
-                <Calendar className="h-8 w-8 text-secondary" />
+              <div className="h-12 w-12 bg-secondary/10 rounded-2xl flex items-center justify-center">
+                <Calendar className="h-6 w-6 text-secondary" />
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-card/50 backdrop-blur-sm rounded-2xl border border-border/50 p-6 shadow-lg hover:shadow-xl transition-all duration-300">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-muted-foreground mb-2">Rejected</p>
+                <p className="text-3xl font-bold text-destructive">
+                  {rejectedPosts.length}
+                </p>
+              </div>
+              <div className="h-12 w-12 bg-destructive/10 rounded-2xl flex items-center justify-center">
+                <X className="h-6 w-6 text-destructive" />
               </div>
             </div>
           </div>
@@ -240,11 +244,11 @@ export function ContentQueue() {
                 Scheduled
               </TabsTrigger>
               <TabsTrigger
-                value="settings"
+                value="rejected"
                 className="flex items-center gap-2 rounded-xl data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
               >
-                <Settings className="h-4 w-4" />
-                Settings
+                <X className="h-4 w-4" />
+                Rejected
               </TabsTrigger>
             </TabsList>
           </div>
@@ -326,15 +330,39 @@ export function ContentQueue() {
             </div>
           </TabsContent>
 
-          <TabsContent value="settings">
+          <TabsContent value="rejected">
             <div className="space-y-8">
               <div className="text-center">
-                <h2 className="text-3xl font-bold text-foreground mb-2">Scheduling Settings</h2>
-                <p className="text-muted-foreground">Configure your content publishing preferences</p>
+                <h2 className="text-3xl font-bold text-foreground mb-2">Rejected Posts</h2>
+                <p className="text-muted-foreground">
+                  {rejectedPosts.length} posts that were rejected
+                </p>
               </div>
-              <SchedulingSettings onSave={handleSchedulingSettingsSave} />
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-6xl mx-auto">
+                {rejectedPosts.map((post) => (
+                  <PostCard
+                    key={post.id}
+                    post={post}
+                    onRewrite={handleRewrite}
+                    onApprove={handleApprove}
+                    onReject={handleReject}
+                    onSchedule={handleSchedule}
+                  />
+                ))}
+              </div>
+              
+              {rejectedPosts.length === 0 && (
+                <div className="text-center py-20">
+                  <div className="h-20 w-20 bg-destructive/10 rounded-2xl flex items-center justify-center mx-auto mb-6">
+                    <X className="h-10 w-10 text-destructive" />
+                  </div>
+                  <h3 className="text-2xl font-semibold text-foreground mb-2">No rejected posts</h3>
+                  <p className="text-muted-foreground text-lg">Posts you reject will appear here.</p>
+                </div>
+              )}
             </div>
           </TabsContent>
+
         </Tabs>
 
         {/* Rewrite Modal */}

@@ -10,7 +10,6 @@ export const Navigation: React.FC<NavigationProps> = ({ currentPage = 'dashboard
   const navItems = [
     { id: 'dashboard', label: 'Dashboard', icon: '🏠' },
     { id: 'content', label: 'Content Queue', icon: '📝' },
-    { id: 'company', label: 'Company Settings', icon: '🏢' },
     { id: 'settings', label: 'Settings', icon: '⚙️' }
   ];
 

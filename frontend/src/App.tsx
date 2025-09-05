@@ -1,15 +1,14 @@
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
-import { QueryClient, QueryClientProvider, useQuery, useMutation } from '@tanstack/react-query';
-import { ClerkProvider, SignedIn, SignedOut, SignInButton, UserButton } from '@clerk/clerk-react';
+import { QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-query';
+import { ClerkProvider, SignedIn, SignedOut, SignInButton } from '@clerk/clerk-react';
 import { useState } from 'react';
 import ErrorBoundary from './ErrorBoundary';
-import { companyApi, contentApi } from './services/api';
+import { companyApi } from './services/api';
 import { ContentQueue } from './components/ContentQueue';
 import { BrandVoiceOnboarding } from './components/onboarding/BrandVoiceOnboarding';
 import { AuthProvider, useAuth } from './components/auth/AuthProvider';
 import { Navigation } from './components/Navigation';
 import { CompanySettings } from './components/CompanySettings';
-import DebugDashboard from './DebugDashboard';
 import Dashboard from './pages/Dashboard';
 
 // Create a client
@@ -75,36 +74,18 @@ function MainDashboard() {
     enabled: !!user
   });
 
-  // Demo content generation mutation
-  const generateDemoMutation = useMutation({
-    mutationFn: contentApi.generateDemo,
-    onSuccess: (data) => {
-      refetchCompany();
-      alert(`🎉 Demo Content Generated Successfully!\n\n` +
-            `Generated ${data.postsGenerated} LinkedIn posts from: ${data.meeting.title}\n\n` +
-            `Check the approval queue below to review your AI-generated content!`);
-    },
-    onError: (error: unknown) => {
-      console.error('Demo generation error:', error);
-      let errorMessage = 'Failed to generate demo content. ';
-      const err = error as any;
-      if (err.response) {
-        errorMessage += `Server responded with ${err.response.status}: ${err.response.data?.error || err.response.statusText}`;
-      } else if (err.request) {
-        errorMessage += 'Unable to reach the server. Make sure the backend is running.';
-      } else {
-        errorMessage += err.message || 'Unknown error occurred';
-      }
-      alert('❌ ' + errorMessage);
-    },
-  });
 
   // Check for force onboarding parameter
   const urlParams = new URLSearchParams(window.location.search);
   const forceOnboarding = urlParams.get('forceOnboarding') === 'true';
   
-  const isOnboarded = !forceOnboarding && company && company.name && company.name !== 'temp' && company.brandVoiceData && Object.keys(company.brandVoiceData).length > 0;
-  const isGenerating = generateDemoMutation.isPending;
+  // Check if user has completed onboarding
+  const isOnboarded = !forceOnboarding && company && company.name && company.name !== 'temp' && company.brandVoiceData && (
+    company.brandVoiceData.industry || 
+    company.brandVoiceData.targetAudience || 
+    company.brandVoiceData.websiteContent ||
+    Object.keys(company.brandVoiceData).length > 0
+  );
 
   if (companyLoading) {
     return (
@@ -128,7 +109,13 @@ function MainDashboard() {
               Help us understand your brand voice to generate personalized LinkedIn content.
             </p>
           </div>
-          <BrandVoiceOnboarding onComplete={() => refetchCompany()} />
+          <BrandVoiceOnboarding onComplete={() => {
+            refetchCompany();
+            // Small delay to ensure data is refreshed before checking onboarding status
+            setTimeout(() => {
+              refetchCompany();
+            }, 1000);
+          }} />
         </div>
       </div>
     );
@@ -136,8 +123,6 @@ function MainDashboard() {
 
   const renderPage = () => {
     switch (currentPage) {
-      case 'company':
-        return <CompanySettings onBack={() => setCurrentPage('dashboard')} />;
       case 'content':
         return (
           <div className="max-w-6xl mx-auto p-6">
@@ -146,14 +131,7 @@ function MainDashboard() {
           </div>
         );
       case 'settings':
-        return (
-          <div className="max-w-4xl mx-auto p-6">
-            <h1 className="text-3xl font-bold text-gray-900 mb-6">Settings</h1>
-            <div className="bg-white rounded-lg shadow p-6">
-              <p className="text-gray-600">Settings page coming soon...</p>
-            </div>
-          </div>
-        );
+        return <CompanySettings onBack={() => setCurrentPage('dashboard')} />;
       case 'dashboard':
       default:
         return <Dashboard onNavigate={setCurrentPage} />;
