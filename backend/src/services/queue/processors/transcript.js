@@ -1,5 +1,19 @@
-import prisma from '../../../models/prisma.js';
+import dotenv from 'dotenv';
+import { PrismaClient } from '@prisma/client';
 import { generateHooks, generateLinkedInPost, generateImage } from '../../ai/index.js';
+
+// Ensure environment variables are loaded in queue processor context
+dotenv.config();
+
+// Create Prisma client with explicit DATABASE_URL for queue worker context
+const prisma = new PrismaClient({
+  datasources: {
+    db: {
+      url: process.env.DATABASE_URL || 'file:./dev.db'
+    }
+  },
+  log: process.env.NODE_ENV === 'development' ? ['query', 'error'] : ['error']
+});
 
 export const processTranscript = async (job) => {
   const { 
@@ -9,17 +23,33 @@ export const processTranscript = async (job) => {
     transcript, 
     actionItems,
     owner,
-    participants 
+    participants,
+    // NEW: Token-validated company data from webhook
+    companyId,
+    companyName
   } = job.data;
 
   try {
     console.log(`🔄 Processing transcript for meeting: ${sessionId}`);
+    console.log(`🗄️  DATABASE_URL: ${process.env.DATABASE_URL}`);
     console.log(`📝 Meeting title: ${title}`);
     console.log(`📊 Transcript length: ${transcript?.length || 0} characters`);
 
-    // Step 1: Find or create company based on owner email
-    let company;
-    if (owner?.email) {
+    // Step 1: Find company using priority-based resolution
+    let company = null;
+
+    // Method 1: Use token-validated company (MOST RELIABLE)
+    if (companyId) {
+      company = await prisma.company.findUnique({
+        where: { id: companyId }
+      });
+      if (company) {
+        console.log(`🔐 Using token-validated company: ${company.name}`);
+      }
+    }
+
+    // Method 2: Fallback to owner email lookup (BACKWARD COMPATIBILITY)
+    if (!company && owner?.email) {
       const user = await prisma.user.findUnique({
         where: { email: owner.email },
         include: { company: true }
@@ -27,30 +57,23 @@ export const processTranscript = async (job) => {
       
       if (user?.company) {
         company = user.company;
-        console.log(`👤 Found company for user: ${user.email}`);
+        console.log(`📧 Found company via email lookup: ${company.name}`);
       } else {
         console.log(`⚠️ No company found for owner: ${owner.email}`);
-        // For now, skip processing if no company found
-        return {
-          success: false,
-          sessionId,
-          message: 'No company configuration found for meeting owner'
-        };
       }
-    } else {
-      console.log(`⚠️ No owner email provided in meeting data`);
-      return {
-        success: false,
-        sessionId,
-        message: 'No owner email provided for company identification'
-      };
     }
 
-    // Step 2: Store meeting record
+    // Method 3: Handle missing company gracefully
+    if (!company) {
+      console.log(`⚠️ No company found via token or email. Creating generic meeting record.`);
+      // Continue processing but won't have brand voice data
+    }
+
+    // Step 2: Store meeting record (handle missing company)
     const meeting = await prisma.meeting.create({
       data: {
         readaiId: sessionId,
-        companyId: company.id,
+        companyId: company?.id || null, // Allow null for meetings without company
         title: title || 'Untitled Meeting',
         transcript,
         summary: summary || null,
@@ -61,9 +84,9 @@ export const processTranscript = async (job) => {
 
     console.log(`💾 Stored meeting record: ${meeting.id}`);
 
-    // Step 3: Generate marketing hooks using AI
-    const brandVoice = company.brandVoiceData || {};
-    const contentPillars = company.contentPillars || ['Industry Insights', 'Product Updates', 'Customer Success'];
+    // Step 3: Generate marketing hooks using AI (with fallbacks)
+    const brandVoice = company?.brandVoiceData || {};
+    const contentPillars = company?.contentPillars || ['Industry Insights', 'Product Updates', 'Customer Success'];
     
     const hooksResult = await generateHooks(transcript, brandVoice, contentPillars);
     const hooks = hooksResult.hooks || [];

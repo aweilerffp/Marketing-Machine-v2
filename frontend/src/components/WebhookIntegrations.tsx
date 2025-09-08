@@ -174,17 +174,38 @@ export const WebhookIntegrations: React.FC = () => {
               </Button>
             </div>
 
-            <div className="bg-blue-50 p-4 rounded-lg">
-              <h4 className="font-medium text-blue-900 mb-2">Setup Instructions</h4>
-              <ol className="text-sm text-blue-800 space-y-1 list-decimal list-inside">
-                <li>Copy the webhook URL above</li>
-                <li>Go to your Read.ai account settings</li>
-                <li>Navigate to the Webhooks section</li>
-                <li>Add a new webhook and paste the URL</li>
-                <li>Set the trigger to "Meeting End"</li>
-                <li>Save your webhook configuration</li>
-              </ol>
-            </div>
+            {webhookConfig.webhookUrl?.includes('localhost') ? (
+              <div className="bg-amber-50 p-4 rounded-lg border border-amber-200">
+                <h4 className="font-medium text-amber-900 mb-2">🚨 Development Setup Required</h4>
+                <p className="text-sm text-amber-800 mb-3">
+                  Read.ai cannot reach localhost URLs. You need to use ngrok to create a public tunnel:
+                </p>
+                <ol className="text-sm text-amber-800 space-y-2 list-decimal list-inside mb-3">
+                  <li>Sign up for a free ngrok account at <a href="https://dashboard.ngrok.com/signup" target="_blank" className="underline">dashboard.ngrok.com</a></li>
+                  <li>Install your authtoken: <code className="bg-amber-100 px-1 rounded">ngrok config add-authtoken YOUR_TOKEN</code></li>
+                  <li>Start ngrok tunnel: <code className="bg-amber-100 px-1 rounded">ngrok http 3001</code></li>
+                  <li>Copy the HTTPS forwarding URL (e.g., https://abc123.ngrok.io)</li>
+                  <li>Add it to your <code className="bg-amber-100 px-1 rounded">.env</code> file: <code className="bg-amber-100 px-1 rounded">NGROK_URL=https://abc123.ngrok.io</code></li>
+                  <li>Restart your backend server</li>
+                  <li>Regenerate the webhook URL above</li>
+                </ol>
+                <p className="text-xs text-amber-700">
+                  <strong>Alternative:</strong> Use RequestBin to test webhook payloads manually
+                </p>
+              </div>
+            ) : (
+              <div className="bg-blue-50 p-4 rounded-lg">
+                <h4 className="font-medium text-blue-900 mb-2">Setup Instructions</h4>
+                <ol className="text-sm text-blue-800 space-y-1 list-decimal list-inside">
+                  <li>Copy the webhook URL above</li>
+                  <li>Go to your Read.ai account settings</li>
+                  <li>Navigate to the Webhooks section</li>
+                  <li>Add a new webhook and paste the URL</li>
+                  <li>Set the trigger to "Meeting End"</li>
+                  <li>Save your webhook configuration</li>
+                </ol>
+              </div>
+            )}
           </div>
         ) : (
           <div className="text-center py-8 space-y-4">
@@ -213,14 +234,36 @@ export const WebhookIntegrations: React.FC = () => {
         )}
       </div>
 
-      <div className="bg-yellow-50 p-4 rounded-lg">
-        <h4 className="font-medium text-yellow-900 mb-2">⚡ How it works</h4>
-        <ul className="text-sm text-yellow-800 space-y-1 list-disc list-inside">
-          <li>When a meeting ends in Read.ai, it will send the transcript to your webhook</li>
-          <li>Our system will automatically analyze the transcript using your brand voice</li>
-          <li>Content hooks and posts will be generated and appear in your Content Queue</li>
-          <li>You'll receive a notification when new content is ready for review</li>
-        </ul>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="bg-yellow-50 p-4 rounded-lg">
+          <h4 className="font-medium text-yellow-900 mb-2">⚡ How it works</h4>
+          <ul className="text-sm text-yellow-800 space-y-1 list-disc list-inside">
+            <li>When a meeting ends in Read.ai, it will send the transcript to your webhook</li>
+            <li>Our system will automatically analyze the transcript using your brand voice</li>
+            <li>Content hooks and posts will be generated and appear in your Content Queue</li>
+            <li>You'll receive a notification when new content is ready for review</li>
+          </ul>
+        </div>
+
+        <div className="bg-gray-50 p-4 rounded-lg">
+          <h4 className="font-medium text-gray-900 mb-2">🧪 Testing</h4>
+          <p className="text-sm text-gray-700 mb-3">
+            Test your webhook integration without Read.ai:
+          </p>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => window.open('https://requestbin.com/', '_blank')}
+            className="flex items-center space-x-2 w-full justify-center"
+          >
+            <ExternalLink className="h-4 w-4" />
+            <span>Open RequestBin</span>
+          </Button>
+          <p className="text-xs text-gray-600 mt-2">
+            Use RequestBin to generate test webhook payloads and see if your endpoint receives them
+          </p>
+        </div>
       </div>
     </div>
   );

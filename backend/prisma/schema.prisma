@@ -37,8 +37,8 @@ model Company {
 
 model Meeting {
   id           String        @id @default(cuid())
-  companyId    String
-  company      Company       @relation(fields: [companyId], references: [id])
+  companyId    String?
+  company      Company?      @relation(fields: [companyId], references: [id])
   readaiId     String        @unique
   title        String?
   transcript   String

@@ -6,10 +6,10 @@ const DEV_USER_ID = 'dev-test-user-id';
 
 // Middleware that requires authentication
 export const requireAuth = (req, res, next) => {
-  // Development bypass when using placeholder Clerk key
-  if (isDevelopment && process.env.CLERK_PUBLISHABLE_KEY === 'pk_test_valid_key_placeholder') {
+  // Development bypass when using mock authentication
+  if (isDevelopment && process.env.CLERK_SECRET_KEY === 'your_clerk_secret_key_here') {
     console.log('🚧 Development mode: Bypassing Clerk authentication');
-    req.auth = { userId: DEV_USER_ID };
+    req.auth = { userId: 'dev_user_123' };
     return next();
   }
   

@@ -39,6 +39,24 @@ router.get('/current', requireAuth, async (req, res) => {
   try {
     const clerkId = getUserId(req);
     
+    // In dev mode with mock auth, use existing company with brand voice data
+    if (clerkId === 'dev_user_123') {
+      const existingCompany = await prisma.company.findFirst({
+        where: {
+          AND: [
+            { brandVoiceData: { not: null } },
+            { name: { not: 'temp' } }
+          ]
+        },
+        include: { user: true }
+      });
+      
+      if (existingCompany) {
+        console.log(`🚧 Dev mode: Using existing company with brand voice: ${existingCompany.name}`);
+        return res.json(existingCompany);
+      }
+    }
+    
     let user = await prisma.user.findUnique({
       where: { clerkId },
       include: { company: true }
@@ -216,16 +234,32 @@ router.get('/webhook', requireAuth, async (req, res) => {
   try {
     const clerkId = getUserId(req);
     
-    const user = await prisma.user.findUnique({
-      where: { clerkId },
-      include: { company: true }
-    });
+    // In dev mode with mock auth, use existing company with brand voice data
+    let company;
+    if (clerkId === 'dev_user_123') {
+      company = await prisma.company.findFirst({
+        where: {
+          AND: [
+            { brandVoiceData: { not: null } },
+            { name: { not: 'temp' } }
+          ]
+        }
+      });
+      
+      if (!company) {
+        return res.status(404).json({ error: 'No company found in dev mode.' });
+      }
+    } else {
+      const user = await prisma.user.findUnique({
+        where: { clerkId },
+        include: { company: true }
+      });
 
-    if (!user || !user.company) {
-      return res.status(404).json({ error: 'Company profile not found. Please complete onboarding first.' });
+      if (!user || !user.company) {
+        return res.status(404).json({ error: 'Company profile not found. Please complete onboarding first.' });
+      }
+      company = user.company;
     }
-
-    const company = user.company;
     
     // If no webhook token exists, return null
     if (!company.webhookToken) {
@@ -264,13 +298,31 @@ router.post('/webhook/generate', requireAuth, async (req, res) => {
   try {
     const clerkId = getUserId(req);
     
-    const user = await prisma.user.findUnique({
-      where: { clerkId },
-      include: { company: true }
-    });
+    // In dev mode with mock auth, use existing company with brand voice data
+    let company;
+    if (clerkId === 'dev_user_123') {
+      company = await prisma.company.findFirst({
+        where: {
+          AND: [
+            { brandVoiceData: { not: null } },
+            { name: { not: 'temp' } }
+          ]
+        }
+      });
+      
+      if (!company) {
+        return res.status(404).json({ error: 'No company found in dev mode.' });
+      }
+    } else {
+      const user = await prisma.user.findUnique({
+        where: { clerkId },
+        include: { company: true }
+      });
 
-    if (!user || !user.company) {
-      return res.status(404).json({ error: 'Company profile not found. Please complete onboarding first.' });
+      if (!user || !user.company) {
+        return res.status(404).json({ error: 'Company profile not found. Please complete onboarding first.' });
+      }
+      company = user.company;
     }
 
     // Generate cryptographically secure random token
@@ -278,7 +330,7 @@ router.post('/webhook/generate', requireAuth, async (req, res) => {
 
     // Update company with new webhook token
     const updatedCompany = await prisma.company.update({
-      where: { id: user.company.id },
+      where: { id: company.id },
       data: {
         webhookToken,
         webhookActive: true
