@@ -78,24 +78,41 @@ function MainDashboard() {
   const [currentPage, setCurrentPage] = useState('dashboard');
   
   // Get company data to check if onboarding is complete
+  // (Always call hooks in the same order - never conditionally)
   const { data: company, isLoading: companyLoading, refetch: refetchCompany } = useQuery({
     queryKey: ['company'],
     queryFn: companyApi.getCurrent,
     enabled: !!user
   });
+  
+  // Add debug logging
+  console.log('MainDashboard - user:', user);
+  console.log('MainDashboard - company:', company);
+  console.log('MainDashboard - companyLoading:', companyLoading);
+  
+  // If user is not loaded yet, show loading
+  if (!user) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+        <span className="ml-3 text-gray-600">Authenticating...</span>
+      </div>
+    );
+  }
 
 
-  // Check for force onboarding parameter
+  // Check for URL parameters
   const urlParams = new URLSearchParams(window.location.search);
   const forceOnboarding = urlParams.get('forceOnboarding') === 'true';
+  const skipOnboarding = urlParams.get('skipOnboarding') === 'true';
   
   // Check if user has completed onboarding
-  const isOnboarded = !forceOnboarding && company && company.name && company.name !== 'temp' && company.brandVoiceData && (
+  const isOnboarded = skipOnboarding || (!forceOnboarding && company && company.name && company.name !== 'temp' && company.brandVoiceData && (
     company.brandVoiceData.industry || 
     company.brandVoiceData.targetAudience || 
     company.brandVoiceData.websiteContent ||
     Object.keys(company.brandVoiceData).length > 0
-  );
+  ));
 
   if (companyLoading) {
     return (

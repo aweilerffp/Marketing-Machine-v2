@@ -49,9 +49,13 @@ export function useIsOnboarded() {
   const isOnboarded = Boolean(
     company && 
     company.name && 
-    company.brandVoiceData &&
-    company.brandVoiceData.industry &&
-    company.brandVoiceData.websiteContent
+    company.name !== 'temp' && 
+    company.brandVoiceData && (
+      company.brandVoiceData.industry || 
+      company.brandVoiceData.targetAudience || 
+      company.brandVoiceData.websiteContent ||
+      Object.keys(company.brandVoiceData).length > 0
+    )
   );
   
   return { isOnboarded, isLoading, company };
