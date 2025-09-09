@@ -1,9 +1,11 @@
 "use client"
 
+import { useState } from "react"
 import { Calendar, Users, MessageSquare, RotateCcw, Trash2 } from "lucide-react"
 import { Button } from "./ui/button"
 import { Badge } from "./ui/badge"
 import { Card, CardContent, CardFooter, CardHeader } from "./ui/card"
+import { HooksModal } from "./modals/HooksModal"
 
 interface Meeting {
   id: string
@@ -32,6 +34,8 @@ interface MeetingCardProps {
 }
 
 export function MeetingCard({ meeting, onReprocess, onDelete }: MeetingCardProps) {
+  const [showHooksModal, setShowHooksModal] = useState(false)
+
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString('en-US', {
       month: 'short',
@@ -86,12 +90,16 @@ export function MeetingCard({ meeting, onReprocess, onDelete }: MeetingCardProps
       <CardContent className="py-3">
         <div className="space-y-3">
           <div className="flex items-center gap-4">
-            <div className="flex items-center gap-2">
+            <button 
+              onClick={() => setShowHooksModal(true)}
+              className="flex items-center gap-2 hover:bg-gray-50 rounded-md px-2 py-1 -mx-2 -my-1 transition-colors"
+              disabled={!meeting.contentHooks?.length}
+            >
               <MessageSquare className="h-4 w-4 text-gray-400" />
-              <span className="text-sm text-gray-600">
+              <span className={`text-sm ${meeting.contentHooks?.length ? 'text-blue-600 hover:text-blue-700 cursor-pointer' : 'text-gray-600'}`}>
                 {meeting.contentHooks?.length || 0} hooks
               </span>
-            </div>
+            </button>
             <div className="flex items-center gap-2">
               <Users className="h-4 w-4 text-gray-400" />
               <span className="text-sm text-gray-600">
@@ -129,6 +137,14 @@ export function MeetingCard({ meeting, onReprocess, onDelete }: MeetingCardProps
           </Button>
         </div>
       </CardFooter>
+
+      {/* Hooks Modal */}
+      <HooksModal
+        isOpen={showHooksModal}
+        onClose={() => setShowHooksModal(false)}
+        hooks={meeting.contentHooks || []}
+        meetingTitle={meeting.title}
+      />
     </Card>
   )
 }
