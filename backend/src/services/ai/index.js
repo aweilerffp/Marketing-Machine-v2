@@ -9,35 +9,54 @@ export const generateHooks = async (transcript, brandVoice, contentPillars) => {
     console.log('🤖 Generating marketing hooks with OpenAI');
     
     const hookGenerationPrompt = `
-You are an expert marketing strategist analyzing a meeting transcript to extract marketing hooks for LinkedIn content.
+ROLE: You are ${brandVoice.companyName || 'this company'}'s senior content strategist.
 
-BRAND VOICE CONTEXT:
-${JSON.stringify(brandVoice, null, 2)}
+### Brand Voice (from company onboarding)
+- Industry: ${brandVoice.industry || 'General Business'}
+- Target Audience: ${brandVoice.targetAudience || 'Business professionals'}
+- Personality Traits: ${brandVoice.personality?.join(', ') || 'Professional, helpful, authoritative'}
+${brandVoice.brandColors?.length ? `- Brand Colors: ${brandVoice.brandColors.join(', ')}` : ''}
 
-CONTENT PILLARS:
-${contentPillars.join(', ')}
+### Content Pillars & Priority
+${contentPillars.map((pillar, index) => `${index + 1}. ${pillar}`).join('\n')}
 
-MEETING TRANSCRIPT:
+### Inputs
+**Meeting Context**
+- Meeting Discussion: Business Strategy Session
+- Participants: Multiple stakeholders
+- Content Source: Meeting transcript analysis
+
+**Five High-Leverage Questions to Ask Yourself First:**
+"What single insight do we most want the reader to remember?"
+"Which ${brandVoice.targetAudience || 'audience persona'} is priority #1 for this piece?"
+"What emotion should the reader feel—relief, confidence, urgency?"
+"What action should they take next?"
+"Which examples, data points, or stories in the transcript most support that goal?"
+
+**Meeting Transcript**
+"""
 ${transcript}
+"""
 
-TASK:
-Extract up to 10 distinct marketing insights from this transcript that could become engaging LinkedIn posts. 
+### TASKS
+1. **Extract up to 10 distinct insights** *only if* they map to one of the ${contentPillars.length} pillars above and answer all 5 high leverage questions. Quote or paraphrase the exact transcript line.
 
-REQUIREMENTS:
-- Focus on insights that align with the content pillars
-- Each hook should be actionable, specific, and valuable to the target audience
-- Maintain the brand voice and tone
-- Avoid mentioning specific client names or confidential information
-- Prioritize insights that would resonate with the target market
+2. For each insight, generate:
+   - **Platform-agnostic hook** (core insight in 1-2 sentences that works across platforms)
+   - **Confidence Score** (0.0-1.0 based on relevance and impact)
+   - **Source attribution** (exact quote that inspired this insight)
+   
+   *→ Each hook must explicitly reference ${brandVoice.industry || 'your industry'} context and address specific ${brandVoice.targetAudience || 'audience'} pain points.*
 
-RESPONSE FORMAT (JSON):
+3. Output as structured JSON:
 {
   "hooks": [
     {
-      "pillar": "content pillar name",
-      "hook": "specific marketing insight or angle",
+      "pillar": "exact pillar name from list above",
+      "hook": "platform-agnostic marketing insight or angle",
+      "source_quote": "exact quote from transcript that inspired this",
       "confidence": 0.85,
-      "reasoning": "why this insight is valuable"
+      "reasoning": "why this insight is valuable to the target audience"
     }
   ]
 }
@@ -45,22 +64,33 @@ RESPONSE FORMAT (JSON):
 Generate between 3-10 hooks, ordered by confidence/relevance.
 `;
 
+    // Calculate estimated token usage for monitoring
+    const estimatedTokens = Math.ceil(hookGenerationPrompt.length / 4); // Rough estimate: 4 chars per token
+    console.log(`📊 Estimated input tokens: ~${estimatedTokens}`);
+    
     const completion = await openai.chat.completions.create({
       model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
       messages: [
         {
           role: 'system',
-          content: 'You are an expert marketing strategist who extracts valuable insights from business conversations and transforms them into compelling LinkedIn content angles.'
+          content: 'You are an expert marketing strategist who extracts valuable insights from business conversations and transforms them into compelling platform-agnostic content hooks.'
         },
         {
           role: 'user',
           content: hookGenerationPrompt
         }
       ],
-      temperature: 0.7,
-      max_tokens: 1500,
+      temperature: parseFloat(process.env.OPENAI_TEMPERATURE) || 0.7,
+      max_tokens: parseInt(process.env.OPENAI_MAX_TOKENS) || 2000, // Configurable via env
       response_format: { type: "json_object" }
     });
+
+    // Log actual token usage for monitoring
+    const usage = completion.usage;
+    if (usage) {
+      console.log(`📊 Token usage - Input: ${usage.prompt_tokens}, Output: ${usage.completion_tokens}, Total: ${usage.total_tokens}`);
+      console.log(`💰 Estimated cost: $${((usage.prompt_tokens * 0.15 + usage.completion_tokens * 0.6) / 1000000).toFixed(6)}`);
+    }
 
     const response = JSON.parse(completion.choices[0].message.content);
     
@@ -101,8 +131,9 @@ export const generateLinkedInPost = async (hook, brandVoice, maxLength = 150) =>
   try {
     console.log('📝 Generating LinkedIn post with OpenAI');
     
+    // TODO: Replace with your existing prompts
     const postGenerationPrompt = `
-Create a LinkedIn post based on this marketing hook.
+REPLACE_WITH_YOUR_EXISTING_POST_GENERATION_PROMPT
 
 MARKETING HOOK:
 ${hook}
@@ -110,16 +141,10 @@ ${hook}
 BRAND VOICE CONTEXT:
 ${JSON.stringify(brandVoice, null, 2)}
 
-REQUIREMENTS:
+[Your existing prompt requirements go here]
 - Maximum ${maxLength} words
-- Professional yet conversational tone matching the brand voice
-- End with an engaging question to drive comments
-- Use line breaks for readability
-- Be authentic and valuable to the audience
-- No hashtags (we'll add those separately)
-- Make it actionable or thought-provoking
 
-The post should feel natural and engaging, not salesy or promotional.
+[Your existing post generation instructions]
 `;
 
     const completion = await openai.chat.completions.create({

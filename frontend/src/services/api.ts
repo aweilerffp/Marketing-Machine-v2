@@ -45,6 +45,7 @@ export interface ContentPost {
     meeting: {
       title?: string;
       createdAt: string;
+      processedStatus?: 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'FAILED';
     };
   };
 }
@@ -57,6 +58,26 @@ export interface Company {
   postingSchedule: any;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface Meeting {
+  id: string;
+  readaiId: string;
+  title?: string;
+  summary?: string;
+  processedStatus: 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'FAILED';
+  processedAt?: string;
+  createdAt: string;
+  contentHooks: Array<{
+    id: string;
+    hook: string;
+    pillar?: string;
+    posts: Array<{
+      id: string;
+      content: string;
+      status: string;
+    }>;
+  }>;
 }
 
 // API Service Functions
@@ -107,6 +128,33 @@ export const contentApi = {
     }>;
   }> => {
     const response = await api.post('/api/content/demo/generate');
+    return response.data;
+  },
+
+  // Get analyzed meetings
+  getMeetings: async (): Promise<Meeting[]> => {
+    const response = await api.get('/api/content/meetings');
+    return response.data;
+  },
+
+  // Reprocess a meeting to regenerate content
+  reprocessMeeting: async (meetingId: string): Promise<{
+    message: string;
+    meetingId: string;
+    status: string;
+  }> => {
+    const response = await api.post(`/api/content/meetings/${meetingId}/reprocess`);
+    return response.data;
+  },
+
+  // Delete a meeting and all related content
+  deleteMeeting: async (meetingId: string): Promise<{
+    message: string;
+    meetingId: string;
+    deletedPosts: number;
+    deletedHooks: number;
+  }> => {
+    const response = await api.delete(`/api/content/meetings/${meetingId}`);
     return response.data;
   }
 };
@@ -206,3 +254,5 @@ export const handleApiError = (error: any) => {
 };
 
 export default api;
+
+// Note: Meeting interface is already exported above at line 63

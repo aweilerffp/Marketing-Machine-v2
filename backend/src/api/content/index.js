@@ -19,6 +19,30 @@ router.get('/queue', requireAuth, async (req, res) => {
       include: { company: true }
     });
 
+    // Development mode: Show all content if no company found
+    if (!user?.company && process.env.NODE_ENV === 'development') {
+      console.log('🚧 Dev mode: Showing all content (no company filter)');
+      const posts = await prisma.contentPost.findMany({
+        include: {
+          hook: {
+            include: {
+              meeting: {
+                select: {
+                  title: true,
+                  createdAt: true,
+                  processedStatus: true
+                }
+              }
+            }
+          }
+        },
+        orderBy: {
+          createdAt: 'desc'
+        }
+      });
+      return res.json(posts);
+    }
+
     if (!user?.company) {
       return res.status(404).json({ error: 'Company not found' });
     }
@@ -37,7 +61,8 @@ router.get('/queue', requireAuth, async (req, res) => {
             meeting: {
               select: {
                 title: true,
-                createdAt: true
+                createdAt: true,
+                processedStatus: true
               }
             }
           }
@@ -72,16 +97,25 @@ router.put('/:postId/status', requireAuth, async (req, res) => {
       include: { company: true }
     });
 
-    const post = await prisma.contentPost.findFirst({
-      where: {
-        id: postId,
-        hook: {
-          meeting: {
-            companyId: user.company.id
+    // Development mode: Skip company filter if no company found
+    let post;
+    if (!user?.company && process.env.NODE_ENV === 'development') {
+      console.log('🚧 Dev mode: Updating post status (no company filter)');
+      post = await prisma.contentPost.findFirst({
+        where: { id: postId }
+      });
+    } else {
+      post = await prisma.contentPost.findFirst({
+        where: {
+          id: postId,
+          hook: {
+            meeting: {
+              companyId: user.company.id
+            }
           }
         }
-      }
-    });
+      });
+    }
 
     if (!post) {
       return res.status(404).json({ error: 'Post not found' });
@@ -204,6 +238,267 @@ router.put('/:postId/content', requireAuth, async (req, res) => {
   } catch (error) {
     console.error('Content update error:', error);
     res.status(500).json({ error: 'Failed to update content' });
+  }
+});
+
+// Get analyzed meetings with their content
+router.get('/meetings', requireAuth, async (req, res) => {
+  try {
+    const clerkId = getUserId(req);
+    
+    const user = await prisma.user.findUnique({
+      where: { clerkId },
+      include: { company: true }
+    });
+
+    // Development mode: Show all meetings if no company found
+    let meetings;
+    if (!user?.company && process.env.NODE_ENV === 'development') {
+      console.log('🚧 Dev mode: Showing all meetings (no company filter)');
+      meetings = await prisma.meeting.findMany({
+        where: {
+          // Show all meetings regardless of status
+        },
+        include: {
+          contentHooks: {
+            include: {
+              posts: {
+                select: {
+                  id: true,
+                  content: true,
+                  status: true
+                }
+              }
+            }
+          }
+        },
+        orderBy: {
+          createdAt: 'desc'
+        }
+      });
+    } else {
+      if (!user?.company) {
+        return res.status(404).json({ error: 'Company not found' });
+      }
+
+      meetings = await prisma.meeting.findMany({
+        where: {
+          companyId: user.company.id
+          // Show all meetings regardless of status
+        },
+        include: {
+          contentHooks: {
+            include: {
+              posts: {
+                select: {
+                  id: true,
+                  content: true,
+                  status: true
+                }
+              }
+            }
+          }
+        },
+        orderBy: {
+          createdAt: 'desc'
+        }
+      });
+    }
+
+    res.json(meetings);
+  } catch (error) {
+    console.error('Meetings fetch error:', error);
+    res.status(500).json({ error: 'Failed to get meetings' });
+  }
+});
+
+// Reprocess a meeting to regenerate content
+router.post('/meetings/:meetingId/reprocess', requireAuth, async (req, res) => {
+  try {
+    const { meetingId } = req.params;
+    const clerkId = getUserId(req);
+
+    const user = await prisma.user.findUnique({
+      where: { clerkId },
+      include: { company: true }
+    });
+
+    // Find the meeting to reprocess
+    let meeting;
+    if (!user?.company && process.env.NODE_ENV === 'development') {
+      console.log('🚧 Dev mode: Reprocessing meeting (no company filter)');
+      meeting = await prisma.meeting.findUnique({
+        where: { id: meetingId },
+        include: {
+          contentHooks: {
+            include: { posts: true }
+          }
+        }
+      });
+    } else {
+      if (!user?.company) {
+        return res.status(404).json({ error: 'Company not found' });
+      }
+
+      meeting = await prisma.meeting.findFirst({
+        where: {
+          id: meetingId,
+          companyId: user.company.id
+        },
+        include: {
+          contentHooks: {
+            include: { posts: true }
+          }
+        }
+      });
+    }
+
+    if (!meeting) {
+      return res.status(404).json({ error: 'Meeting not found' });
+    }
+
+    // Only allow reprocessing of completed meetings
+    if (meeting.processedStatus !== 'COMPLETED') {
+      return res.status(400).json({ 
+        error: 'Only completed meetings can be reprocessed' 
+      });
+    }
+
+    // Delete existing content hooks and posts
+    await prisma.contentPost.deleteMany({
+      where: {
+        hook: {
+          meetingId: meeting.id
+        }
+      }
+    });
+
+    await prisma.contentHook.deleteMany({
+      where: {
+        meetingId: meeting.id
+      }
+    });
+
+    // Reset meeting status to PROCESSING
+    await prisma.meeting.update({
+      where: { id: meeting.id },
+      data: { 
+        processedStatus: 'PROCESSING',
+        processedAt: new Date()
+      }
+    });
+
+    // Re-queue the meeting for processing
+    const jobData = {
+      sessionId: meeting.readaiId,
+      title: meeting.title || 'Untitled Meeting',
+      summary: meeting.summary || '',
+      transcript: meeting.transcript,
+      actionItems: meeting.actionItems || [],
+      keyQuestions: [],
+      topics: [],
+      owner: null,
+      participants: [],
+      reportUrl: null,
+      receivedAt: new Date().toISOString(),
+      // Include company information if authenticated
+      companyId: user?.company?.id || null,
+      companyName: user?.company?.name || null
+    };
+
+    const { transcriptQueue } = await import('../../services/queue/index.js');
+    await transcriptQueue.add('process-transcript', jobData, {
+      attempts: 3,
+      backoff: {
+        type: 'exponential',
+        delay: 2000,
+      },
+      removeOnComplete: 10,
+      removeOnFail: 5,
+    });
+
+    console.log(`🔄 Meeting ${meetingId} queued for reprocessing`);
+
+    res.json({
+      message: 'Meeting queued for reprocessing',
+      meetingId: meeting.id,
+      status: 'PROCESSING'
+    });
+  } catch (error) {
+    console.error('Reprocess meeting error:', error);
+    res.status(500).json({ error: 'Failed to reprocess meeting' });
+  }
+});
+
+// Delete a meeting and all related content
+router.delete('/meetings/:meetingId', requireAuth, async (req, res) => {
+  try {
+    const { meetingId } = req.params;
+    const clerkId = getUserId(req);
+
+    const user = await prisma.user.findUnique({
+      where: { clerkId },
+      include: { company: true }
+    });
+
+    // Find the meeting to delete
+    let meeting;
+    if (!user?.company && process.env.NODE_ENV === 'development') {
+      console.log('🚧 Dev mode: Deleting meeting (no company filter)');
+      meeting = await prisma.meeting.findUnique({
+        where: { id: meetingId }
+      });
+    } else {
+      if (!user?.company) {
+        return res.status(404).json({ error: 'Company not found' });
+      }
+
+      meeting = await prisma.meeting.findFirst({
+        where: {
+          id: meetingId,
+          companyId: user.company.id
+        }
+      });
+    }
+
+    if (!meeting) {
+      return res.status(404).json({ error: 'Meeting not found' });
+    }
+
+    console.log(`🗑️  Deleting meeting ${meetingId} and all related content`);
+
+    // Delete in proper order to respect foreign key constraints
+    // 1. Delete ContentPosts first (references ContentHooks)
+    const deletedPosts = await prisma.contentPost.deleteMany({
+      where: {
+        hook: {
+          meetingId: meetingId
+        }
+      }
+    });
+
+    // 2. Delete ContentHooks next (references Meeting)
+    const deletedHooks = await prisma.contentHook.deleteMany({
+      where: { meetingId: meetingId }
+    });
+
+    // 3. Delete Meeting last
+    await prisma.meeting.delete({
+      where: { id: meetingId }
+    });
+
+    console.log(`✅ Successfully deleted meeting ${meetingId}: ${deletedPosts.count} posts, ${deletedHooks.count} hooks`);
+
+    res.json({
+      message: 'Meeting deleted successfully',
+      meetingId,
+      deletedPosts: deletedPosts.count,
+      deletedHooks: deletedHooks.count
+    });
+
+  } catch (error) {
+    console.error('Delete meeting error:', error);
+    res.status(500).json({ error: 'Failed to delete meeting' });
   }
 });
 

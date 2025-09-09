@@ -69,7 +69,7 @@ export const processTranscript = async (job) => {
       // Continue processing but won't have brand voice data
     }
 
-    // Step 2: Store meeting record (handle missing company)
+    // Step 2: Store meeting record with PROCESSING status
     const meeting = await prisma.meeting.create({
       data: {
         readaiId: sessionId,
@@ -78,6 +78,7 @@ export const processTranscript = async (job) => {
         transcript,
         summary: summary || null,
         actionItems: actionItems ? { actionItems } : null,
+        processedStatus: 'PROCESSING',
         processedAt: new Date()
       }
     });
@@ -152,6 +153,12 @@ export const processTranscript = async (job) => {
       message: `Successfully processed ${processedPosts} LinkedIn posts from ${processedHooks} marketing hooks`
     };
 
+    // Step 6: Update meeting status to COMPLETED
+    await prisma.meeting.update({
+      where: { id: meeting.id },
+      data: { processedStatus: 'COMPLETED' }
+    });
+
     console.log(`✅ Transcript processing completed for ${sessionId}`);
     console.log(`📊 Results: ${processedPosts} posts created from ${processedHooks} hooks`);
 
@@ -159,6 +166,24 @@ export const processTranscript = async (job) => {
 
   } catch (error) {
     console.error(`❌ Error processing transcript ${sessionId}:`, error);
+    
+    // Try to update meeting status to FAILED if meeting was created
+    try {
+      const existingMeeting = await prisma.meeting.findUnique({
+        where: { readaiId: sessionId }
+      });
+      
+      if (existingMeeting) {
+        await prisma.meeting.update({
+          where: { id: existingMeeting.id },
+          data: { processedStatus: 'FAILED' }
+        });
+        console.log(`📝 Updated meeting ${sessionId} status to FAILED`);
+      }
+    } catch (updateError) {
+      console.error(`❌ Failed to update meeting status:`, updateError);
+    }
+    
     throw error; // Let Bull handle the retry
   }
 };

@@ -83,10 +83,31 @@ router.post('/', async (req, res) => {
       where: { readaiId: session_id }
     });
 
-    if (existingMeeting) {
+    // Allow forced reprocessing with query parameter (for testing)
+    const forceReprocess = req.query.force === 'true';
+    
+    if (existingMeeting && !forceReprocess) {
       console.log(`📝 Meeting ${session_id} already processed`);
       return res.status(200).json({ 
         message: 'Meeting already processed' 
+      });
+    }
+
+    if (existingMeeting && forceReprocess) {
+      console.log(`🔄 Force reprocessing meeting ${session_id}`);
+      // Delete existing meeting and all related content
+      await prisma.contentPost.deleteMany({
+        where: {
+          hook: {
+            meetingId: existingMeeting.id
+          }
+        }
+      });
+      await prisma.contentHook.deleteMany({
+        where: { meetingId: existingMeeting.id }
+      });
+      await prisma.meeting.delete({
+        where: { id: existingMeeting.id }
       });
     }
 

@@ -1,25 +1,33 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Search, CheckSquare, Calendar, X, Sparkles } from "lucide-react"
+import { Search, CheckSquare, Calendar, X, Sparkles, Users, RefreshCw } from "lucide-react"
 import { Input } from "./ui/input"
 import { PostCard } from "./PostCard"
+import { MeetingCard } from "./MeetingCard"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs"
 import { Button } from "./ui/button"
 import { contentApi, handleApiError, type ContentPost } from "../services/api"
+import { useMeetings, useReprocessMeeting, useDeleteMeeting, useInvalidateMeetings } from "../hooks/useContent"
 import { RewriteModal } from "./modals/RewriteModal"
 
 export function ContentQueue() {
   const [posts, setPosts] = useState<ContentPost[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState("")
-  const [activeTab, setActiveTab] = useState("review")
+  const [activeTab, setActiveTab] = useState("meetings")
   const [error, setError] = useState<string | null>(null)
   const [rewriteModal, setRewriteModal] = useState<{ isOpen: boolean; postId?: string; content?: string }>({ 
     isOpen: false 
   })
 
-  // Load posts from API
+  // Use React Query for meetings
+  const { data: meetings = [], isLoading: meetingsLoading, error: meetingsError } = useMeetings()
+  const reprocessMeetingMutation = useReprocessMeeting()
+  const deleteMeetingMutation = useDeleteMeeting()
+  const { refetchMeetings: manualRefetchMeetings } = useInvalidateMeetings()
+
+  // Load posts from API (keeping existing implementation for now)
   useEffect(() => {
     loadPosts()
   }, [])
@@ -37,6 +45,25 @@ export function ContentQueue() {
       setIsLoading(false)
     }
   }
+
+  // Handle meetings error from React Query
+  useEffect(() => {
+    if (meetingsError) {
+      const apiError = handleApiError(meetingsError)
+      setError(apiError.message)
+    }
+  }, [meetingsError])
+
+  // Add focus listener for manual refresh when user returns to tab
+  useEffect(() => {
+    const handleFocus = () => {
+      // Refresh meetings data when user focuses on the window
+      manualRefetchMeetings()
+    }
+
+    window.addEventListener('focus', handleFocus)
+    return () => window.removeEventListener('focus', handleFocus)
+  }, [manualRefetchMeetings])
 
   const handleRewrite = (postId: string) => {
     const post = posts.find(p => p.id === postId)
@@ -106,19 +133,40 @@ export function ContentQueue() {
     console.log("Schedule post:", postId)
   }
 
-
-  const handleGenerateDemo = async () => {
+  const handleReprocess = async (meetingId: string) => {
     try {
-      setIsLoading(true)
-      await contentApi.generateDemo()
-      await loadPosts() // Reload posts after generating demo content
+      await reprocessMeetingMutation.mutateAsync(meetingId)
+      // Also reload posts as new ones will be generated
+      setTimeout(() => {
+        loadPosts()
+      }, 2000)
+      console.log("✅ Meeting reprocessing started")
     } catch (err) {
       const apiError = handleApiError(err)
       setError(apiError.message)
-    } finally {
-      setIsLoading(false)
+      console.error("❌ Failed to reprocess meeting:", apiError.message)
     }
   }
+
+  const handleDelete = async (meetingId: string) => {
+    // Show confirmation dialog
+    if (!window.confirm('Are you sure you want to delete this meeting and all its content? This action cannot be undone.')) {
+      return
+    }
+
+    try {
+      await deleteMeetingMutation.mutateAsync(meetingId)
+      // Also reload posts since they may have been deleted
+      loadPosts()
+      console.log("✅ Meeting deleted successfully")
+    } catch (err) {
+      const apiError = handleApiError(err)
+      setError(apiError.message)
+      console.error("❌ Failed to delete meeting:", apiError.message)
+    }
+  }
+
+
 
   const filteredPosts = posts.filter((post) => {
     const matchesSearch = post.content.toLowerCase().includes(searchQuery.toLowerCase())
@@ -159,19 +207,41 @@ export function ContentQueue() {
         {error && (
           <div className="mb-8 p-4 bg-destructive/10 border border-destructive/20 rounded-lg">
             <p className="text-destructive text-sm">{error}</p>
-            <Button 
-              variant="outline" 
-              size="sm" 
-              onClick={loadPosts}
-              className="mt-2"
-            >
-              Try Again
-            </Button>
+            <div className="flex gap-2 mt-2">
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={loadPosts}
+              >
+                Retry Posts
+              </Button>
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={() => manualRefetchMeetings()}
+              >
+                Retry Meetings
+              </Button>
+            </div>
           </div>
         )}
 
         {/* Queue Statistics */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-16">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-16">
+          <div className="bg-card/50 backdrop-blur-sm rounded-2xl border border-border/50 p-8 shadow-lg hover:shadow-xl transition-all duration-300">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-muted-foreground mb-2">Meetings Analyzed</p>
+                <p className="text-3xl font-bold text-blue-600">
+                  {meetings.length}
+                </p>
+              </div>
+              <div className="h-12 w-12 bg-blue-100 rounded-2xl flex items-center justify-center">
+                <Users className="h-6 w-6 text-blue-600" />
+              </div>
+            </div>
+          </div>
+
           <div className="bg-card/50 backdrop-blur-sm rounded-2xl border border-border/50 p-8 shadow-lg hover:shadow-xl transition-all duration-300">
             <div className="flex items-center justify-between">
               <div>
@@ -215,20 +285,18 @@ export function ContentQueue() {
           </div>
         </div>
 
-        {/* Demo Content Button */}
-        {posts.length === 0 && !isLoading && (
-          <div className="text-center mb-8">
-            <Button onClick={handleGenerateDemo} size="lg">
-              <Sparkles className="h-4 w-4 mr-2" />
-              Generate Demo Content
-            </Button>
-          </div>
-        )}
 
         {/* Tabbed Interface */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-8">
           <div className="flex justify-center">
-            <TabsList className="grid grid-cols-3 bg-card/50 backdrop-blur-sm border border-border/50 p-2 rounded-2xl shadow-lg">
+            <TabsList className="grid grid-cols-4 bg-card/50 backdrop-blur-sm border border-border/50 p-2 rounded-2xl shadow-lg">
+              <TabsTrigger
+                value="meetings"
+                className="flex items-center gap-2 rounded-xl data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
+              >
+                <Users className="h-4 w-4" />
+                Analyzed
+              </TabsTrigger>
               <TabsTrigger
                 value="review"
                 className="flex items-center gap-2 rounded-xl data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
@@ -252,6 +320,58 @@ export function ContentQueue() {
               </TabsTrigger>
             </TabsList>
           </div>
+
+          <TabsContent value="meetings" className="space-y-8">
+            <div className="text-center">
+              <div className="flex items-center justify-center gap-4 mb-2">
+                <h2 className="text-3xl font-bold text-foreground">Meetings Analyzed</h2>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => manualRefetchMeetings()}
+                  disabled={meetingsLoading}
+                  className="flex items-center gap-2"
+                >
+                  <RefreshCw className={`h-4 w-4 ${meetingsLoading ? 'animate-spin' : ''}`} />
+                  Refresh
+                </Button>
+              </div>
+              <p className="text-muted-foreground">
+                {meetings.length} meetings with generated content
+              </p>
+              <div className="mt-4">
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={() => manualRefetchMeetings()}
+                  disabled={meetingsLoading}
+                >
+                  {meetingsLoading ? "Loading..." : "Refresh Meetings"}
+                </Button>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-6xl mx-auto">
+              {meetings.map((meeting) => (
+                <MeetingCard
+                  key={meeting.id}
+                  meeting={meeting}
+                  onReprocess={handleReprocess}
+                  onDelete={handleDelete}
+                />
+              ))}
+            </div>
+
+            {meetings.length === 0 && (
+              <div className="text-center py-20">
+                <div className="h-20 w-20 bg-blue-100 rounded-2xl flex items-center justify-center mx-auto mb-6">
+                  <Users className="h-10 w-10 text-blue-600" />
+                </div>
+                <h3 className="text-2xl font-semibold text-foreground mb-2">No meetings analyzed yet</h3>
+                <p className="text-muted-foreground text-lg">Meetings with generated content will appear here.</p>
+              </div>
+            )}
+          </TabsContent>
 
           <TabsContent value="review" className="space-y-8">
             <div className="text-center">

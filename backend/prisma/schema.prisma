@@ -36,17 +36,18 @@ model Company {
 }
 
 model Meeting {
-  id           String        @id @default(cuid())
-  companyId    String?
-  company      Company?      @relation(fields: [companyId], references: [id])
-  readaiId     String        @unique
-  title        String?
-  transcript   String
-  summary      String?
-  actionItems  Json?
-  contentHooks ContentHook[]
-  processedAt  DateTime?
-  createdAt    DateTime      @default(now())
+  id              String         @id @default(cuid())
+  companyId       String?
+  company         Company?       @relation(fields: [companyId], references: [id])
+  readaiId        String         @unique
+  title           String?
+  transcript      String
+  summary         String?
+  actionItems     Json?
+  contentHooks    ContentHook[]
+  processedStatus ProcessedStatus @default(PENDING)
+  processedAt     DateTime?
+  createdAt       DateTime       @default(now())
 }
 
 model ContentHook {
@@ -81,6 +82,13 @@ enum PostStatus {
   SCHEDULED
   PUBLISHED
   REJECTED
+}
+
+enum ProcessedStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
 }
 
 model PlatformConnection {

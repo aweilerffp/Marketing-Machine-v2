@@ -11,8 +11,17 @@ import { Navigation } from './components/Navigation';
 import { CompanySettings } from './components/CompanySettings';
 import Dashboard from './pages/Dashboard';
 
-// Create a client
-const queryClient = new QueryClient();
+// Create a client with optimized settings for real-time data
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 10000, // Data becomes stale after 10 seconds
+      refetchOnWindowFocus: true, // Refetch when user returns to tab
+      refetchOnReconnect: true, // Refetch when network reconnects
+      retry: 3, // Retry failed requests 3 times
+    },
+  },
+});
 
 const publishableKey = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
 
