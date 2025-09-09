@@ -5,6 +5,7 @@ import { useState } from 'react';
 import ErrorBoundary from './ErrorBoundary';
 import { companyApi } from './services/api';
 import { ContentQueue } from './components/ContentQueue';
+import { FactoryFloor } from './components/FactoryFloor';
 import { BrandVoiceOnboarding } from './components/onboarding/BrandVoiceOnboarding';
 import { AuthProvider, useAuth } from './components/auth/AuthProvider';
 import { Navigation } from './components/Navigation';
@@ -132,6 +133,8 @@ function MainDashboard() {
 
   const renderPage = () => {
     switch (currentPage) {
+      case 'factory':
+        return <FactoryFloor />;
       case 'content':
         return (
           <div className="max-w-6xl mx-auto p-6">

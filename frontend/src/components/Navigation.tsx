@@ -9,6 +9,7 @@ interface NavigationProps {
 export const Navigation: React.FC<NavigationProps> = ({ currentPage = 'dashboard', onNavigate }) => {
   const navItems = [
     { id: 'dashboard', label: 'Dashboard', icon: '🏠' },
+    { id: 'factory', label: 'Factory Floor', icon: '🏭' },
     { id: 'content', label: 'Content Queue', icon: '📝' },
     { id: 'settings', label: 'Settings', icon: '⚙️' }
   ];
