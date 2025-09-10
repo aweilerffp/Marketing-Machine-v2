@@ -1,39 +1,77 @@
 import OpenAI from 'openai';
+import { processBrandVoice, formatBrandVoiceForPrompt } from './brandVoiceProcessor.js';
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
-export const generateHooks = async (transcript, brandVoice, contentPillars) => {
+// Helper function to generate industry-specific keywords
+const generateIndustryKeywords = (industry) => {
+  const keywordMap = {
+    'E-commerce': ['marketplace', 'product listings', 'inventory management', 'conversion rates', 'cart abandonment', 'checkout optimization'],
+    'Amazon Selling': ['listing management', 'catalog optimization', 'bulk editing', 'Amazon variations', 'Seller Central', 'flat files', 'ASIN management', 'brand registry', 'listing errors', 'catalog health'],
+    'SaaS': ['user onboarding', 'feature adoption', 'churn reduction', 'product-market fit', 'customer success', 'API integration'],
+    'Marketing': ['lead generation', 'conversion optimization', 'customer acquisition', 'brand awareness', 'content strategy', 'performance metrics'],
+    'Technology': ['automation', 'scalability', 'integration', 'workflow optimization', 'digital transformation', 'efficiency gains'],
+    'General Business': ['operational efficiency', 'growth strategies', 'customer experience', 'business optimization', 'competitive advantage', 'market positioning']
+  };
+  
+  return keywordMap[industry] || keywordMap['General Business'];
+};
+
+// Helper function to generate industry-specific pain points
+const generateIndustryPainPoints = (industry, targetAudience) => {
+  const painPointMap = {
+    'E-commerce': ['cart abandonment', 'inventory tracking', 'product discovery', 'conversion rates', 'customer retention'],
+    'Amazon Selling': ['listing errors', 'catalog inconsistencies', 'bulk operations', 'variation management', 'compliance issues'],
+    'SaaS': ['user adoption', 'feature complexity', 'onboarding friction', 'integration challenges', 'churn risk'],
+    'Marketing': ['lead quality', 'attribution tracking', 'campaign performance', 'audience targeting', 'ROI measurement'],
+    'Technology': ['system integration', 'process automation', 'data silos', 'workflow bottlenecks', 'scalability concerns'],
+    'General Business': ['operational inefficiencies', 'growth bottlenecks', 'customer satisfaction', 'competitive pressure', 'resource allocation']
+  };
+  
+  return painPointMap[industry] || painPointMap['General Business'];
+};
+
+export const generateHooks = async (transcript, brandVoice, contentPillars, meetingMetadata = {}) => {
   try {
     console.log('🤖 Generating marketing hooks with OpenAI');
     
+    // Process brand voice using unified processor
+    const processedBrandVoice = processBrandVoice(brandVoice);
+    console.log('🔍 Hook generation using processed brand voice:', { 
+      company: processedBrandVoice.companyName, 
+      industry: processedBrandVoice.industry 
+    });
+    
+    // Format meeting metadata
+    const meetingDate = meetingMetadata.date || new Date().toLocaleDateString();
+    const meetingType = meetingMetadata.type || 'STRATEGY_SESSION';
+    const meetingGoal = meetingMetadata.goal || 'Extract actionable business insights';
+    
     const hookGenerationPrompt = `
-ROLE: You are ${brandVoice.companyName || 'this company'}'s senior content strategist.
+ROLE: You are ${processedBrandVoice.companyName}'s senior content strategist.
 
-### Brand Voice (from company onboarding)
-- Industry: ${brandVoice.industry || 'General Business'}
-- Target Audience: ${brandVoice.targetAudience || 'Business professionals'}
-- Personality Traits: ${brandVoice.personality?.join(', ') || 'Professional, helpful, authoritative'}
-${brandVoice.brandColors?.length ? `- Brand Colors: ${brandVoice.brandColors.join(', ')}` : ''}
+### Brand Voice Context
+${formatBrandVoiceForPrompt(processedBrandVoice, 'structured')}
 
-### Content Pillars & Priority
+### Content Pillars & Priority (ranked)
 ${contentPillars.map((pillar, index) => `${index + 1}. ${pillar}`).join('\n')}
 
 ### Inputs
-**Meeting Context**
-- Meeting Discussion: Business Strategy Session
-- Participants: Multiple stakeholders
-- Content Source: Meeting transcript analysis
+**Meeting Metadata**
+- Date: ${meetingDate}
+- Type: ${meetingType}
+- Goal: ${meetingGoal}
 
 **Five High-Leverage Questions to Ask Yourself First:**
 "What single insight do we most want the reader to remember?"
-"Which ${brandVoice.targetAudience || 'audience persona'} is priority #1 for this piece?"
+"Which ${processedBrandVoice.targetAudience} persona is priority #1 for this piece?"
 "What emotion should the reader feel—relief, confidence, urgency?"
 "What action should they take next?"
 "Which examples, data points, or stories in the transcript most support that goal?"
 
-**Meeting Transcript**
+**Transcript**
 """
 ${transcript}
 """
@@ -42,26 +80,30 @@ ${transcript}
 1. **Extract up to 10 distinct insights** *only if* they map to one of the ${contentPillars.length} pillars above and answer all 5 high leverage questions. Quote or paraphrase the exact transcript line.
 
 2. For each insight, generate:
-   - **Platform-agnostic hook** (core insight in 1-2 sentences that works across platforms)
-   - **Confidence Score** (0.0-1.0 based on relevance and impact)
-   - **Source attribution** (exact quote that inspired this insight)
-   
-   *→ Each hook must explicitly reference ${brandVoice.industry || 'your industry'} context and address specific ${brandVoice.targetAudience || 'audience'} pain points.*
+   - **Blog angle** (title + 25-word hook)  
+   - **LinkedIn hook** (≤150 words, ends with a question)  
+   - **Tweet** (≤280 chars, 1 hashtag max)  
+   *→ Each deliverable must explicitly reference ${processedBrandVoice.industry} context OR address specific pain points: ${processedBrandVoice.painPoints.join(', ')}.*  
 
 3. Output as structured JSON:
 {
-  "hooks": [
+  "insights": [
     {
       "pillar": "exact pillar name from list above",
-      "hook": "platform-agnostic marketing insight or angle",
       "source_quote": "exact quote from transcript that inspired this",
+      "blog": { 
+        "title": "compelling blog post title", 
+        "hook": "25-word compelling hook" 
+      },
+      "linkedin": "LinkedIn post content ending with question",
+      "tweet": "Twitter-optimized content with max 1 hashtag",
       "confidence": 0.85,
-      "reasoning": "why this insight is valuable to the target audience"
+      "reasoning": "why this insight is valuable to ${processedBrandVoice.targetAudience}"
     }
   ]
 }
 
-Generate between 3-10 hooks, ordered by confidence/relevance.
+Generate between 3-10 insights, ordered by confidence/relevance.
 `;
 
     // Calculate estimated token usage for monitoring

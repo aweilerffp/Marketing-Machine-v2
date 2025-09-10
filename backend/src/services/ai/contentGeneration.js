@@ -1,4 +1,5 @@
 import OpenAI from 'openai';
+import { processBrandVoice, formatBrandVoiceForPrompt } from './brandVoiceProcessor.js';
 
 // Initialize OpenAI client
 const openai = process.env.OPENAI_API_KEY ? new OpenAI({
@@ -158,15 +159,14 @@ function getMockContentHooks(transcript, brandVoiceData) {
  * Mock LinkedIn post for when AI is not available
  */
 function getMockLinkedInPost(hook, brandVoiceData) {
-  const industry = brandVoiceData.industry || 'technology';
-  const audience = brandVoiceData.targetAudience || 'business professionals';
+  const processedBrandVoice = processBrandVoice(brandVoiceData);
   
   const post = {
     content: `🚨 ${hook}
 
-Here's what every ${audience} needs to know:
+Here's what every ${processedBrandVoice.targetAudience} needs to know:
 
-${industry === 'technology' ? 'Amazon sellers' : 'Business owners'} are losing revenue every day because their listings fail silently. You think everything is working fine, but behind the scenes, your variations are breaking, your content is disappearing, and your sales are suffering.
+${processedBrandVoice.industry === 'Technology' ? 'Amazon sellers' : 'Business owners'} are losing revenue every day because their listings fail silently. You think everything is working fine, but behind the scenes, your variations are breaking, your content is disappearing, and your sales are suffering.
 
 The solution? Automated monitoring that catches these issues before they cost you money.
 
@@ -244,9 +244,10 @@ Return only the rewritten content, no explanations or additional text.
  * @param {string} pillar - Content pillar category
  * @param {object} brandVoiceData - Company's brand voice data
  * @param {string} meetingSummary - Optional meeting context
+ * @param {object} hookContext - Strategic context from hook generation
  * @returns {Promise<object>} Enhanced LinkedIn post content
  */
-export async function generateEnhancedLinkedInPost(hookText, pillar, brandVoiceData, meetingSummary = '') {
+export async function generateEnhancedLinkedInPost(hookText, pillar, brandVoiceData, meetingSummary = '', hookContext = null) {
   // If no OpenAI key, return mock data
   if (!openai || !process.env.OPENAI_API_KEY || process.env.OPENAI_API_KEY === 'your_openai_api_key_here') {
     console.log('🤖 Using mock enhanced LinkedIn post - no OpenAI key configured');
@@ -254,117 +255,97 @@ export async function generateEnhancedLinkedInPost(hookText, pillar, brandVoiceD
   }
 
   try {
-    // Extract company details
-    const companyName = brandVoiceData.companyName || 'your company';
-    const industry = brandVoiceData.industry || 'technology';
-    const targetAudience = brandVoiceData.targetAudience || 'business professionals';
-    
-    // Create industry-specific keywords
-    const getIndustryKeywords = (industry) => {
-      const keywordMap = {
-        'amazon': ['Amazon', 'ASIN', 'SKU', 'Seller Central', 'listings', 'catalog', 'variations', 'bulk edit', 'FBA'],
-        'technology': ['software', 'platform', 'API', 'integration', 'automation', 'data', 'analytics'],
-        'ecommerce': ['online store', 'conversion', 'checkout', 'inventory', 'fulfillment'],
-        'default': ['business', 'efficiency', 'productivity', 'growth', 'optimization']
-      };
-      return keywordMap[industry.toLowerCase()] || keywordMap.default;
-    };
-
-    const industryKeywords = getIndustryKeywords(industry);
-
-    const prompt = `## SYSTEM
-You are ${companyName}'s senior copywriter specializing in high-converting LinkedIn content for ${industry} professionals.
+    // Process brand voice using unified processor
+    console.log('🔍 Debug: generateEnhancedLinkedInPost called with:', { hookText, pillar, brandVoiceData: typeof brandVoiceData, meetingSummary: typeof meetingSummary, hookContext: !!hookContext });
+    const processedBrandVoice = processBrandVoice(brandVoiceData);
+    console.log('🔍 Debug: Processed brand voice:', { industry: processedBrandVoice.industry, hasContext: !!hookContext });
+    const prompt = `You are a senior LinkedIn copywriter creating high-converting content for business professionals.
 
 ## CONTENT REQUIREMENTS
-**HARD CONSTRAINTS:**
-- Each post: 1500-2200 characters (optimal for LinkedIn algorithm)
-- Write at 6th grade reading level
-- No em dashes (use periods, commas, or short sentences instead)
-- Include 1-2 industry-relevant keywords naturally: ${industryKeywords.slice(0, 4).join(', ')}
-- Focus on industry pain points and solutions
-- Align with content pillar: ${pillar}
+- 1500-2200 characters (LinkedIn optimal)
+- 6th grade reading level
+- No em dashes (use periods, commas, short sentences)
+- Focus on industry pain points and practical solutions
+- Professional yet conversational tone
 
-## BRAND VOICE
-Company: ${companyName}
-Industry: ${industry}
-Target Audience: ${targetAudience}
-${brandVoiceData.websiteContent ? `Brand Context: ${brandVoiceData.websiteContent.substring(0, 300)}...` : ''}
-
-## CONTENT STRATEGY
-### HOOK MASTERY
-- **Pattern Interrupt:** Start with a contrarian statement about ${industry}
-- **Curiosity Gap:** Create immediate intrigue within 8-12 words
-- **Emotional Trigger:** Connect to professional frustration, lost time, or growth aspirations
-- **Specificity:** Use exact numbers, timeframes, or industry scenarios
-
-### STORY ARCHITECTURE
+## STORY ARCHITECTURE OPTIONS
 Choose the most fitting approach:
 
-**Option A - Problem/Agitation/Solution:**
-- Line 1: Contrarian hook about ${industry}
-- Para 1: Specific professional problem scenario (with business stakes)
-- Para 2: Why conventional approaches fail
-- Para 3: Your solution with proof
-- Para 4: Call-to-action question
+**Problem/Solution Pattern:**
+1. Contrarian hook that challenges conventional thinking
+2. Specific business problem scenario with stakes
+3. Why typical approaches fail
+4. Your solution with proof/results
+5. Engagement question
 
-**Option B - Case Study Format:**
-- Line 1: Professional transformation headline
-- Para 1: Starting situation (business chaos)
-- Para 2: Key insight/strategy implemented
-- Para 3: Results and broader implications
-- Para 4: Engagement question
+**Case Study Format:**
+1. Transformation headline
+2. Starting situation (business chaos/challenge)
+3. Key insight/strategy implemented
+4. Results and broader implications
+5. Discussion question
 
-**Option C - Industry Insight:**
-- Line 1: Bold prediction about ${industry}
-- Para 1: Supporting evidence and context
-- Para 2: What this means for professionals
-- Para 3: Action steps
-- Para 4: Discussion question
+**Industry Insight:**
+1. Bold prediction or counter-intuitive statement
+2. Supporting evidence and context
+3. What this means for professionals
+4. Actionable next steps
+5. Thought-provoking question
 
-### ENGAGEMENT AMPLIFIERS
-- **Social Proof:** Specific results and time savings
-- **Insider Knowledge:** Industry secrets or little-known facts
-- **Trend Connections:** Link to current industry changes
-- **Personal Stakes:** What happens when problems aren't solved
-- **Future Casting:** Where the industry is heading
+## ENGAGEMENT ELEMENTS
+- Use specific numbers, timeframes, percentages
+- Include social proof or insider knowledge
+- Connect to current industry trends
+- Show personal/business stakes of inaction
+- End with questions that invite professional discussion
 
-## QUALITY CHECKPOINTS
-- [ ] Would a ${targetAudience} stop scrolling for this hook?
-- [ ] Does it teach something valuable in 60 seconds?
-- [ ] Is the solution connection natural, not forced?
-- [ ] Does the question genuinely invite professional discussion?
-- [ ] Is every sentence earning its place for busy professionals?
+## QUALITY STANDARDS
+- Would busy professionals stop scrolling for this?
+- Does it teach something valuable in under 60 seconds?
+- Is the solution connection natural, not forced?
+- Does the question genuinely spark discussion?
+- Is every sentence earning its place?
 
-## INPUT CONTEXT
-Hook: ${hookText}
-Content Pillar: ${pillar}
-${meetingSummary ? `Meeting Context: ${meetingSummary}` : ''}
-Industry Focus: ${industry}
+## INPUT DATA
+Hook: "${hookText}"
+Content Pillar: "${pillar}"
 
-## OUTPUT FORMAT
-Return clean JSON:
-{
-  "post": "Complete LinkedIn post text with natural flow and strong engagement elements",
-  "reasoning": "Brief explanation of approach taken",
-  "estimatedCharacterCount": number
-}
+Brand Voice Context:
+${formatBrandVoiceForPrompt(processedBrandVoice, 'context')}
+
+${meetingSummary ? `Meeting Context: "${meetingSummary}"` : ''}
+
+${hookContext ? `
+## HOOK GENERATION INSIGHTS
+Original Quote: "${hookContext.originalInsight}"
+Strategic Reasoning: "${hookContext.reasoning}"
+Confidence Score: ${hookContext.confidence}
+${hookContext.blog ? `Related Blog Concept: "${hookContext.blog.title}" - ${hookContext.blog.hook}` : ''}
+${hookContext.tweet ? `Related Tweet Version: "${hookContext.tweet}"` : ''}
+${hookContext.preGeneratedLinkedIn ? `Hook Generator's LinkedIn Attempt: "${hookContext.preGeneratedLinkedIn}" (use as reference only, create something better)` : ''}
+` : ''}
 
 ## INSTRUCTIONS
-1. Choose most appropriate story architecture for this hook
-2. Craft posts that feel like professional-to-professional advice, not corporate
-3. Prioritize value delivery over word count targets
-4. End with questions that spark genuine industry discussions
+1. Use the brand voice data to understand the company's industry, target audience, and communication style
+2. Craft content that aligns with the specified content pillar
+3. ${hookContext ? 'BUILD ON the hook generation insights - leverage the original quote, strategic reasoning, and confidence score to create a cohesive narrative' : 'Transform the hook into engaging LinkedIn content using one of the story architectures'}
+4. ${hookContext ? 'Connect the original meeting quote to broader business implications while maintaining the strategic intent identified in hook generation' : 'Ensure the company connection feels natural and valuable'}
 5. Focus on efficiency gains, growth opportunities, and problem-solving themes
-6. Ensure the ${companyName} connection feels natural and valuable
+6. ${hookContext ? 'Consider how this content fits with the related blog and tweet concepts for multi-platform consistency' : 'Maintain professional yet conversational tone'}
 
-BEGIN`;
+Return clean JSON:
+{
+  "post": "Complete LinkedIn post with natural flow and strong engagement",
+  "reasoning": "Brief explanation of approach and architecture chosen",
+  "estimatedCharacterCount": number
+}`;
 
     const completion = await openai.chat.completions.create({
       model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
       messages: [
         { 
           role: 'system', 
-          content: `You are an expert LinkedIn content creator that writes engaging posts for ${industry} professionals. Always respond with valid JSON.` 
+          content: `You are an expert LinkedIn content creator that writes engaging posts for business professionals. Always respond with valid JSON.` 
         },
         { role: 'user', content: prompt }
       ],
@@ -397,15 +378,16 @@ BEGIN`;
  * Mock enhanced LinkedIn post for when AI is not available
  */
 function getMockEnhancedLinkedInPost(hookText, pillar, brandVoiceData) {
-  const industry = brandVoiceData.industry || 'technology';
-  const companyName = brandVoiceData.companyName || 'our platform';
+  console.log('🔍 Debug: getMockEnhancedLinkedInPost called with:', { hookText, pillar, brandVoiceData: typeof brandVoiceData });
+  const processedBrandVoice = processBrandVoice(brandVoiceData);
+  console.log('🔍 Debug: Mock variables:', { industry: processedBrandVoice.industry, companyName: processedBrandVoice.companyName });
   
   const post = {
     post: `🚨 ${hookText}
 
-Here's what every ${brandVoiceData.targetAudience || 'professional'} needs to know:
+Here's what every ${processedBrandVoice.targetAudience} needs to know:
 
-Most ${industry} companies are losing efficiency every day because their processes fail silently. You think everything is working fine, but behind the scenes, your systems are breaking, your data is disappearing, and your productivity is suffering.
+Most ${processedBrandVoice.industry} companies are losing efficiency every day because their processes fail silently. You think everything is working fine, but behind the scenes, your systems are breaking, your data is disappearing, and your productivity is suffering.
 
 The solution? Automated monitoring that catches these issues before they cost you money.
 

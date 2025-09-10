@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { Calendar, Clock, Edit3, Check, X } from "lucide-react"
+import { Calendar, Clock, Edit3, Check, X, Loader2 } from "lucide-react"
 import { Button } from "./ui/button"
 import { Card, CardContent, CardFooter, CardHeader } from "./ui/card"
 import { Badge } from "./ui/badge"
@@ -15,9 +15,11 @@ interface PostCardProps {
   onApprove: (postId: string) => void
   onReject?: (postId: string) => void
   onSchedule?: (postId: string) => void
+  onView?: (postId: string) => void
   isSelected?: boolean
   onSelect?: (postId: string, selected: boolean) => void
   showSelection?: boolean
+  loadingStates?: Record<string, boolean>
 }
 
 const statusConfig = {
@@ -54,13 +56,20 @@ export function PostCard({
   onApprove,
   onReject,
   onSchedule,
+  onView,
   isSelected = false,
   onSelect,
   showSelection = false,
+  loadingStates = {},
 }: PostCardProps) {
   const [imageLoaded, setImageLoaded] = useState(false)
   const status = statusConfig[post.status]
   const StatusIcon = status.icon
+  
+  // Loading states for each action
+  const isRewriteLoading = loadingStates[`rewrite-${post.id}`] || false
+  const isApproveLoading = loadingStates[`approve-${post.id}`] || false
+  const isRejectLoading = loadingStates[`reject-${post.id}`] || false
 
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString("en-US", {
@@ -113,7 +122,16 @@ export function PostCard({
       </CardHeader>
 
       <CardContent className="p-4">
-        <p className="text-sm text-card-foreground line-clamp-4 leading-relaxed">{post.content}</p>
+        <div 
+          className={cn(
+            "text-sm text-card-foreground line-clamp-4 leading-relaxed",
+            onView && "cursor-pointer hover:text-primary transition-colors"
+          )}
+          onClick={() => onView?.(post.id)}
+          title={onView ? "Click to view full post" : undefined}
+        >
+          {post.content}
+        </div>
         
         {post.hook?.hook && (
           <div className="mt-3 p-2 bg-muted/50 rounded-md">
@@ -139,8 +157,18 @@ export function PostCard({
       <CardFooter className="p-4 pt-0 flex gap-2">
         {post.status === "PENDING" && (
           <>
-            <Button variant="outline" size="sm" onClick={() => onRewrite(post.id)} className="flex-1">
-              <Edit3 className="h-3 w-3 mr-1" />
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={() => onRewrite(post.id)} 
+              disabled={isRewriteLoading}
+              className="flex-1 hover:bg-slate-50 hover:border-slate-300 active:scale-95 transition-all duration-150"
+            >
+              {isRewriteLoading ? (
+                <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+              ) : (
+                <Edit3 className="h-3 w-3 mr-1" />
+              )}
               Rewrite
             </Button>
             {onReject && (
@@ -148,21 +176,39 @@ export function PostCard({
                 variant="outline"
                 size="sm"
                 onClick={() => onReject(post.id)}
-                className="flex-1 text-destructive hover:text-destructive"
+                disabled={isRejectLoading}
+                className="flex-1 text-red-600 border-red-200 hover:bg-red-50 hover:border-red-300 hover:text-red-700 active:scale-95 transition-all duration-150 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                <X className="h-3 w-3 mr-1" />
+                {isRejectLoading ? (
+                  <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                ) : (
+                  <X className="h-3 w-3 mr-1" />
+                )}
                 Reject
               </Button>
             )}
-            <Button size="sm" onClick={() => onApprove(post.id)} className="flex-1">
-              <Check className="h-3 w-3 mr-1" />
+            <Button 
+              size="sm" 
+              onClick={() => onApprove(post.id)} 
+              disabled={isApproveLoading}
+              className="flex-1 bg-green-600 hover:bg-green-700 active:scale-95 transition-all duration-150 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {isApproveLoading ? (
+                <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+              ) : (
+                <Check className="h-3 w-3 mr-1" />
+              )}
               Approve
             </Button>
           </>
         )}
 
         {post.status === "APPROVED" && onSchedule && (
-          <Button size="sm" onClick={() => onSchedule(post.id)} className="w-full">
+          <Button 
+            size="sm" 
+            onClick={() => onSchedule(post.id)} 
+            className="w-full bg-blue-600 hover:bg-blue-700 active:scale-95 transition-all duration-150"
+          >
             <Calendar className="h-3 w-3 mr-1" />
             Schedule Post
           </Button>
@@ -174,7 +220,12 @@ export function PostCard({
               <Calendar className="h-3 w-3 mr-1" />
               Scheduled
             </Button>
-            <Button size="sm" variant="outline" onClick={() => onSchedule?.(post.id)} className="flex-1">
+            <Button 
+              size="sm" 
+              variant="outline" 
+              onClick={() => onSchedule?.(post.id)} 
+              className="flex-1 hover:bg-blue-50 hover:border-blue-300 hover:text-blue-700 active:scale-95 transition-all duration-150"
+            >
               <Edit3 className="h-3 w-3 mr-1" />
               Edit Schedule
             </Button>

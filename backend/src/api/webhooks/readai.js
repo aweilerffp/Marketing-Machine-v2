@@ -83,19 +83,10 @@ router.post('/', async (req, res) => {
       where: { readaiId: session_id }
     });
 
-    // Allow forced reprocessing with query parameter (for testing)
-    const forceReprocess = req.query.force === 'true';
-    
-    if (existingMeeting && !forceReprocess) {
-      console.log(`📝 Meeting ${session_id} already processed`);
-      return res.status(200).json({ 
-        message: 'Meeting already processed' 
-      });
-    }
-
-    if (existingMeeting && forceReprocess) {
+    // Always reprocess existing meetings (like the reprocess button in UI)
+    if (existingMeeting) {
       console.log(`🔄 Force reprocessing meeting ${session_id}`);
-      // Delete existing meeting and all related content
+      // Delete existing content but keep the meeting record for upsert
       await prisma.contentPost.deleteMany({
         where: {
           hook: {
@@ -106,9 +97,8 @@ router.post('/', async (req, res) => {
       await prisma.contentHook.deleteMany({
         where: { meetingId: existingMeeting.id }
       });
-      await prisma.meeting.delete({
-        where: { id: existingMeeting.id }
-      });
+      // Don't delete the meeting - let upsert handle the update
+      console.log(`🗑️ Deleted existing content for meeting ${session_id}, keeping meeting record for update`);
     }
 
     // Extract transcript with multiple fallbacks for maximum content richness

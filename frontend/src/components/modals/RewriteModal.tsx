@@ -103,7 +103,7 @@ export const RewriteModal: React.FC<RewriteModalProps> = ({
               <Label className="text-sm font-medium text-gray-700 dark:text-gray-300">
                 {hasRewritten ? 'Rewritten Content' : 'AI Rewrite Preview'}
               </Label>
-              <div className="p-4 bg-blue-50 dark:bg-blue-950 rounded-lg border border-blue-200 dark:border-blue-800 min-h-60 max-h-60 overflow-y-auto shadow-sm">
+              <div className="p-4 bg-gray-50 dark:bg-slate-800 rounded-lg border border-gray-200 dark:border-slate-600 min-h-60 max-h-60 overflow-y-auto shadow-sm">
                 {isRewriting ? (
                   <div className="flex items-center justify-center h-full">
                     <div className="text-center">
@@ -115,12 +115,12 @@ export const RewriteModal: React.FC<RewriteModalProps> = ({
                   <Textarea
                     value={rewrittenContent}
                     onChange={(e) => setRewrittenContent(e.target.value)}
-                    className="border-0 bg-transparent resize-none min-h-full p-0 text-gray-900 dark:text-gray-100 placeholder:text-gray-500 dark:placeholder:text-gray-400"
+                    className="border-0 bg-transparent resize-none min-h-full p-0 text-gray-900 dark:text-white placeholder:text-gray-500 dark:placeholder:text-gray-300 focus:ring-0 focus:outline-none"
                     placeholder="Rewritten content will appear here..."
                   />
                 ) : (
                   <div className="flex items-center justify-center h-full">
-                    <p className="text-sm text-gray-500 dark:text-gray-400">
+                    <p className="text-sm text-gray-500 dark:text-gray-300">
                       Enter instructions and click "Rewrite" to see the AI-generated version
                     </p>
                   </div>

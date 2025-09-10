@@ -44,6 +44,19 @@ export function MeetingCard({ meeting, onReprocess, onDelete }: MeetingCardProps
     })
   }
 
+  const formatDateTime = (dateString: string) => {
+    const date = new Date(dateString)
+    return date.toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric'
+    }) + ' at ' + date.toLocaleTimeString('en-US', {
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true
+    })
+  }
+
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'COMPLETED': return 'bg-green-100 text-green-800'
@@ -77,7 +90,7 @@ export function MeetingCard({ meeting, onReprocess, onDelete }: MeetingCardProps
             <div className="flex items-center gap-2 mt-1">
               <Calendar className="h-4 w-4 text-gray-400" />
               <span className="text-sm text-gray-500">
-                {formatDate(meeting.createdAt)}
+                {formatDateTime(meeting.createdAt)}
               </span>
             </div>
           </div>

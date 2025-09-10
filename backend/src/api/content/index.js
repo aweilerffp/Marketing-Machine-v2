@@ -43,18 +43,33 @@ router.get('/queue', requireAuth, async (req, res) => {
       return res.json(posts);
     }
 
+    // Development mode: Show all posts if no company found OR if posts exist without company
     if (!user?.company) {
       return res.status(404).json({ error: 'Company not found' });
     }
 
-    const posts = await prisma.contentPost.findMany({
-      where: {
-        hook: {
-          meeting: {
-            companyId: user.company.id
+    // In development, also show posts that don't have a company association
+    const whereCondition = process.env.NODE_ENV === 'development' 
+      ? {
+          hook: {
+            meeting: {
+              OR: [
+                { companyId: user.company.id },
+                { companyId: null }
+              ]
+            }
           }
         }
-      },
+      : {
+          hook: {
+            meeting: {
+              companyId: user.company.id
+            }
+          }
+        };
+
+    const posts = await prisma.contentPost.findMany({
+      where: whereCondition,
       include: {
         hook: {
           include: {
@@ -91,31 +106,40 @@ router.put('/:postId/status', requireAuth, async (req, res) => {
       return res.status(400).json({ error: 'Invalid status' });
     }
 
-    // Verify user owns this post
+    // Single query with user and post lookup combined
     const user = await prisma.user.findUnique({
       where: { clerkId },
       include: { company: true }
     });
 
-    // Development mode: Skip company filter if no company found
-    let post;
-    if (!user?.company && process.env.NODE_ENV === 'development') {
-      console.log('🚧 Dev mode: Updating post status (no company filter)');
-      post = await prisma.contentPost.findFirst({
-        where: { id: postId }
-      });
+    // Optimized single query for post with company check
+    let whereCondition;
+    if (process.env.NODE_ENV === 'development') {
+      // In development mode, allow posts without company or with user's company
+      whereCondition = user?.company ? {
+        id: postId,
+        OR: [
+          { hook: { meeting: { companyId: user.company.id } } },
+          { hook: { meeting: { companyId: null } } }
+        ]
+      } : {
+        id: postId
+      };
     } else {
-      post = await prisma.contentPost.findFirst({
-        where: {
-          id: postId,
-          hook: {
-            meeting: {
-              companyId: user.company.id
-            }
+      // Production mode: strict company filtering
+      whereCondition = {
+        id: postId,
+        hook: {
+          meeting: {
+            companyId: user?.company?.id || 'never-match'
           }
         }
-      });
+      };
     }
+
+    const post = await prisma.contentPost.findFirst({
+      where: whereCondition
+    });
 
     if (!post) {
       return res.status(404).json({ error: 'Post not found' });
@@ -251,14 +275,21 @@ router.get('/meetings', requireAuth, async (req, res) => {
       include: { company: true }
     });
 
-    // Development mode: Show all meetings if no company found
+    // Development mode: Show all meetings if no company found OR include NULL companyId meetings
     let meetings;
-    if (!user?.company && process.env.NODE_ENV === 'development') {
-      console.log('🚧 Dev mode: Showing all meetings (no company filter)');
+    if (process.env.NODE_ENV === 'development') {
+      console.log('🚧 Dev mode: Showing all meetings (including NULL companyId)');
+      
+      // In dev mode, show meetings with matching companyId OR NULL companyId
+      const whereCondition = user?.company ? {
+        OR: [
+          { companyId: user.company.id },
+          { companyId: null }
+        ]
+      } : {};
+      
       meetings = await prisma.meeting.findMany({
-        where: {
-          // Show all meetings regardless of status
-        },
+        where: whereCondition,
         include: {
           contentHooks: {
             include: {
@@ -325,10 +356,16 @@ router.post('/meetings/:meetingId/reprocess', requireAuth, async (req, res) => {
 
     // Find the meeting to reprocess
     let meeting;
-    if (!user?.company && process.env.NODE_ENV === 'development') {
-      console.log('🚧 Dev mode: Reprocessing meeting (no company filter)');
-      meeting = await prisma.meeting.findUnique({
-        where: { id: meetingId },
+    if (process.env.NODE_ENV === 'development') {
+      console.log('🚧 Dev mode: Reprocessing meeting with relaxed filters');
+      meeting = await prisma.meeting.findFirst({
+        where: {
+          id: meetingId,
+          OR: [
+            { companyId: user?.company?.id },
+            { companyId: null }
+          ]
+        },
         include: {
           contentHooks: {
             include: { posts: true }
@@ -452,7 +489,8 @@ router.post('/hooks/:hookId/linkedin-post', requireAuth, async (req, res) => {
           meeting: {
             select: {
               title: true,
-              summary: true
+              summary: true,
+              transcript: true
             }
           }
         }
@@ -473,7 +511,8 @@ router.post('/hooks/:hookId/linkedin-post', requireAuth, async (req, res) => {
           meeting: {
             select: {
               title: true,
-              summary: true
+              summary: true,
+              transcript: true
             }
           }
         }
@@ -486,7 +525,7 @@ router.post('/hooks/:hookId/linkedin-post', requireAuth, async (req, res) => {
 
     // Generate enhanced LinkedIn post
     const brandVoiceData = user?.company?.brandVoiceData || {};
-    const meetingContext = hook.meeting?.summary || '';
+    const meetingContext = hook.meeting?.transcript || hook.meeting?.summary || '';
     
     const linkedInPost = await generateEnhancedLinkedInPost(
       hook.hook,
@@ -535,10 +574,16 @@ router.delete('/meetings/:meetingId', requireAuth, async (req, res) => {
 
     // Find the meeting to delete
     let meeting;
-    if (!user?.company && process.env.NODE_ENV === 'development') {
-      console.log('🚧 Dev mode: Deleting meeting (no company filter)');
-      meeting = await prisma.meeting.findUnique({
-        where: { id: meetingId }
+    if (process.env.NODE_ENV === 'development') {
+      console.log('🚧 Dev mode: Deleting meeting with relaxed filters');
+      meeting = await prisma.meeting.findFirst({
+        where: {
+          id: meetingId,
+          OR: [
+            { companyId: user?.company?.id },
+            { companyId: null }
+          ]
+        }
       });
     } else {
       if (!user?.company) {

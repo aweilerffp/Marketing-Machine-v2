@@ -10,6 +10,7 @@ import { Button } from "./ui/button"
 import { contentApi, handleApiError, type ContentPost } from "../services/api"
 import { useMeetings, useReprocessMeeting, useDeleteMeeting, useInvalidateMeetings } from "../hooks/useContent"
 import { RewriteModal } from "./modals/RewriteModal"
+import { PostViewModal } from "./modals/PostViewModal"
 
 export function ContentQueue() {
   const [posts, setPosts] = useState<ContentPost[]>([])
@@ -20,6 +21,10 @@ export function ContentQueue() {
   const [rewriteModal, setRewriteModal] = useState<{ isOpen: boolean; postId?: string; content?: string }>({ 
     isOpen: false 
   })
+  const [viewModal, setViewModal] = useState<{ isOpen: boolean; post?: ContentPost }>({ 
+    isOpen: false 
+  })
+  const [loadingStates, setLoadingStates] = useState<Record<string, boolean>>({})
 
   // Use React Query for meetings
   const { data: meetings = [], isLoading: meetingsLoading, error: meetingsError } = useMeetings()
@@ -89,6 +94,8 @@ export function ContentQueue() {
     if (!rewriteModal.postId) return
     
     try {
+      setLoadingStates(prev => ({ ...prev, [`rewrite-${rewriteModal.postId}`]: true }))
+      
       const updatedPost = await contentApi.updateContent(rewriteModal.postId, rewrittenContent)
       setPosts(posts.map(post => 
         post.id === rewriteModal.postId ? updatedPost : post
@@ -96,35 +103,103 @@ export function ContentQueue() {
     } catch (err) {
       const apiError = handleApiError(err)
       setError(apiError.message)
+    } finally {
+      setLoadingStates(prev => ({ ...prev, [`rewrite-${rewriteModal.postId}`]: false }))
     }
   }
 
+  const handleView = (postId: string) => {
+    const post = posts.find(p => p.id === postId)
+    if (post) {
+      setViewModal({ 
+        isOpen: true, 
+        post 
+      })
+    }
+  }
+
+  const handleViewClose = () => {
+    setViewModal({ isOpen: false })
+  }
+
   const handleApprove = async (postId: string) => {
+    // Optimistic update - instantly update UI
+    const tomorrow = new Date()
+    tomorrow.setDate(tomorrow.getDate() + 1)
+    tomorrow.setHours(9, 0, 0, 0)
+    
+    const originalPost = posts.find(p => p.id === postId)
+    const optimisticPost = originalPost ? {
+      ...originalPost,
+      status: "SCHEDULED" as const,
+      scheduledFor: tomorrow.toISOString()
+    } : null
+    
+    if (optimisticPost) {
+      setPosts(posts.map(post => 
+        post.id === postId ? optimisticPost : post
+      ))
+    }
+    
     try {
-      // Schedule for tomorrow at 9 AM as default
-      const tomorrow = new Date()
-      tomorrow.setDate(tomorrow.getDate() + 1)
-      tomorrow.setHours(9, 0, 0, 0)
+      setLoadingStates(prev => ({ ...prev, [`approve-${postId}`]: true }))
       
+      // Make API call in background
       const updatedPost = await contentApi.updateStatus(postId, "SCHEDULED", tomorrow.toISOString())
+      
+      // Update with server response (in case of any differences)
       setPosts(posts.map(post => 
         post.id === postId ? updatedPost : post
       ))
     } catch (err) {
+      // Revert optimistic update on error
+      if (originalPost) {
+        setPosts(posts.map(post => 
+          post.id === postId ? originalPost : post
+        ))
+      }
       const apiError = handleApiError(err)
       setError(apiError.message)
+    } finally {
+      setLoadingStates(prev => ({ ...prev, [`approve-${postId}`]: false }))
     }
   }
 
   const handleReject = async (postId: string) => {
+    // Optimistic update - instantly update UI
+    const originalPost = posts.find(p => p.id === postId)
+    const optimisticPost = originalPost ? {
+      ...originalPost,
+      status: "REJECTED" as const
+    } : null
+    
+    if (optimisticPost) {
+      setPosts(posts.map(post => 
+        post.id === postId ? optimisticPost : post
+      ))
+    }
+    
     try {
+      setLoadingStates(prev => ({ ...prev, [`reject-${postId}`]: true }))
+      
+      // Make API call in background
       const updatedPost = await contentApi.updateStatus(postId, "REJECTED")
+      
+      // Update with server response (in case of any differences)
       setPosts(posts.map(post => 
         post.id === postId ? updatedPost : post
       ))
     } catch (err) {
+      // Revert optimistic update on error
+      if (originalPost) {
+        setPosts(posts.map(post => 
+          post.id === postId ? originalPost : post
+        ))
+      }
       const apiError = handleApiError(err)
       setError(apiError.message)
+    } finally {
+      setLoadingStates(prev => ({ ...prev, [`reject-${postId}`]: false }))
     }
   }
 
@@ -156,8 +231,6 @@ export function ContentQueue() {
 
     try {
       await deleteMeetingMutation.mutateAsync(meetingId)
-      // Also reload posts since they may have been deleted
-      loadPosts()
       console.log("✅ Meeting deleted successfully")
     } catch (err) {
       const apiError = handleApiError(err)
@@ -402,6 +475,8 @@ export function ContentQueue() {
                   onApprove={handleApprove}
                   onReject={handleReject}
                   onSchedule={handleSchedule}
+                  onView={handleView}
+                  loadingStates={loadingStates}
                 />
               ))}
             </div>
@@ -434,6 +509,8 @@ export function ContentQueue() {
                     onApprove={handleApprove}
                     onReject={handleReject}
                     onSchedule={handleSchedule}
+                    onView={handleView}
+                    loadingStates={loadingStates}
                   />
                 ))}
               </div>
@@ -467,6 +544,8 @@ export function ContentQueue() {
                     onApprove={handleApprove}
                     onReject={handleReject}
                     onSchedule={handleSchedule}
+                    onView={handleView}
+                    loadingStates={loadingStates}
                   />
                 ))}
               </div>
@@ -492,6 +571,13 @@ export function ContentQueue() {
           originalContent={rewriteModal.content || ''}
           onAccept={handleRewriteAccept}
           onRewrite={handleRewriteSubmit}
+        />
+
+        {/* Post View Modal */}
+        <PostViewModal
+          isOpen={viewModal.isOpen}
+          onClose={handleViewClose}
+          post={viewModal.post || null}
         />
       </div>
     </div>

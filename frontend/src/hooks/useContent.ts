@@ -61,12 +61,16 @@ export function useDeleteMeeting() {
         return oldData.filter(meeting => meeting.id !== meetingId)
       })
       
-      // Also invalidate posts since they may be related to the deleted meeting
-      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.posts })
+      // Also remove any posts associated with the deleted meeting from cache
+      queryClient.setQueryData(QUERY_KEYS.posts, (oldPosts: any[] | undefined) => {
+        if (!oldPosts) return oldPosts
+        return oldPosts.filter(post => post.hook?.meetingId !== meetingId)
+      })
     },
     onError: () => {
       // Refetch on error to ensure data consistency
       queryClient.invalidateQueries({ queryKey: QUERY_KEYS.meetings })
+      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.posts })
     }
   })
 }

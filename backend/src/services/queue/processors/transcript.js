@@ -1,6 +1,7 @@
 import dotenv from 'dotenv';
 import { PrismaClient } from '@prisma/client';
-import { generateHooks, generateLinkedInPost, generateImage } from '../../ai/index.js';
+import { generateHooks, generateImage } from '../../ai/index.js';
+import { generateEnhancedLinkedInPost } from '../../ai/contentGeneration.js';
 
 // Ensure environment variables are loaded in queue processor context
 dotenv.config();
@@ -9,7 +10,7 @@ dotenv.config();
 const prisma = new PrismaClient({
   datasources: {
     db: {
-      url: process.env.DATABASE_URL || 'file:./dev.db'
+      url: process.env.DATABASE_URL || 'file:/Users/adamweiler/Documents/BMAD/marketing-machine/backend/prisma/dev.db'
     }
   },
   log: process.env.NODE_ENV === 'development' ? ['query', 'error'] : ['error']
@@ -69,11 +70,23 @@ export const processTranscript = async (job) => {
       // Continue processing but won't have brand voice data
     }
 
-    // Step 2: Store meeting record with PROCESSING status
-    const meeting = await prisma.meeting.create({
-      data: {
+    // Step 2: Store or update meeting record with PROCESSING status
+    const meeting = await prisma.meeting.upsert({
+      where: {
+        readaiId: sessionId
+      },
+      update: {
+        companyId: company?.id || null,
+        title: title || 'Untitled Meeting',
+        transcript,
+        summary: summary || null,
+        actionItems: actionItems ? { actionItems } : null,
+        processedStatus: 'PROCESSING',
+        processedAt: new Date()
+      },
+      create: {
         readaiId: sessionId,
-        companyId: company?.id || null, // Allow null for meetings without company
+        companyId: company?.id || null,
         title: title || 'Untitled Meeting',
         transcript,
         summary: summary || null,
@@ -89,8 +102,17 @@ export const processTranscript = async (job) => {
     const brandVoice = company?.brandVoiceData || {};
     const contentPillars = company?.contentPillars || ['Industry Insights', 'Product Updates', 'Customer Success'];
     
-    const hooksResult = await generateHooks(transcript, brandVoice, contentPillars);
-    const hooks = hooksResult.hooks || [];
+    // Create meeting metadata for better context
+    const meetingMetadata = {
+      date: new Date().toLocaleDateString(),
+      type: title?.includes('kickoff') ? 'KICKOFF' : 
+            title?.includes('quarterly') ? 'QBR' : 
+            title?.includes('brainstorm') ? 'BRAINSTORM' : 'STRATEGY_SESSION',
+      goal: `Extract actionable insights from ${title || 'meeting'}`
+    };
+    
+    const hooksResult = await generateHooks(transcript, brandVoice, contentPillars, meetingMetadata);
+    const hooks = hooksResult.insights || hooksResult.hooks || [];
 
     console.log(`🎯 Generated ${hooks.length} marketing hooks`);
 
@@ -104,11 +126,14 @@ export const processTranscript = async (job) => {
     // Step 5: Process each hook to create content
     for (const hookData of selectedHooks) {
       try {
+        // Extract hook text from either old format (hookData.hook) or new format (hookData.linkedin)
+        const hookText = hookData.hook || hookData.linkedin || hookData.blog?.hook || 'Generated marketing insight';
+        
         // Create hook record
         const contentHook = await prisma.contentHook.create({
           data: {
             meetingId: meeting.id,
-            hook: hookData.hook,
+            hook: hookText,
             pillar: hookData.pillar || null
           }
         });
@@ -116,19 +141,34 @@ export const processTranscript = async (job) => {
         console.log(`📝 Created hook: ${contentHook.id}`);
         processedHooks++;
 
-        // Generate LinkedIn post
-        const maxPostLength = parseInt(process.env.MAX_LINKEDIN_POST_LENGTH) || 150;
-        const linkedinPost = await generateLinkedInPost(hookData.hook, brandVoice, maxPostLength);
+        // Always use enhanced LinkedIn post generation with hook context
+        const hookContext = {
+          originalInsight: hookData.source_quote || '',
+          reasoning: hookData.reasoning || '',
+          confidence: hookData.confidence || 0.8,
+          blog: hookData.blog || null,
+          tweet: hookData.tweet || null,
+          // Include the pre-generated LinkedIn as reference but don't use it directly
+          preGeneratedLinkedIn: hookData.linkedin || null
+        };
+        
+        const linkedinPost = await generateEnhancedLinkedInPost(
+          hookText,
+          hookData.pillar || 'General',
+          brandVoice,
+          transcript,
+          hookContext
+        );
 
         // Generate accompanying image
         const brandColors = brandVoice.colors || [];
-        const imageResult = await generateImage(hookData.hook, brandColors, 'professional');
+        const imageResult = await generateImage(hookText, brandColors, 'professional');
 
         // Create content post record
         await prisma.contentPost.create({
           data: {
             hookId: contentHook.id,
-            content: linkedinPost,
+            content: linkedinPost.post || linkedinPost,
             imageUrl: imageResult.url,
             imagePrompt: imageResult.prompt,
             status: 'PENDING' // Will go to approval queue
@@ -139,7 +179,8 @@ export const processTranscript = async (job) => {
         processedPosts++;
 
       } catch (hookError) {
-        console.error(`❌ Error processing hook "${hookData.hook}":`, hookError);
+        const errorHookText = hookData.hook || hookData.linkedin || hookData.blog?.hook || 'Unknown hook';
+        console.error(`❌ Error processing hook "${errorHookText}":`, hookError);
         // Continue with other hooks even if one fails
       }
     }
