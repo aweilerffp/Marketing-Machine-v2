@@ -531,7 +531,9 @@ router.post('/hooks/:hookId/linkedin-post', requireAuth, async (req, res) => {
       hook.hook,
       hook.pillar || 'General',
       brandVoiceData,
-      meetingContext
+      meetingContext,
+      null,
+      user?.company?.id
     );
 
     // Create a new ContentPost record

@@ -2,6 +2,7 @@ import express from 'express';
 import { requireAuth, getUserId } from '../../middleware/clerk.js';
 import prisma from '../../models/prisma.js';
 import crypto from 'crypto';
+import { generateCustomLinkedInPrompt, getCustomLinkedInPrompt } from '../../services/ai/promptGeneration.js';
 
 const router = express.Router();
 
@@ -39,22 +40,55 @@ router.get('/current', requireAuth, async (req, res) => {
   try {
     const clerkId = getUserId(req);
     
-    // In dev mode with mock auth, use existing company with brand voice data
+    // In dev mode with mock auth, ensure we have a specific dev user and company
     if (clerkId === 'dev_user_123') {
-      const existingCompany = await prisma.company.findFirst({
-        where: {
-          AND: [
-            { brandVoiceData: { not: null } },
-            { name: { not: 'temp' } }
-          ]
-        },
-        include: { user: true }
+      // Find or create dev user
+      let devUser = await prisma.user.findUnique({
+        where: { clerkId: 'dev_user_123' },
+        include: { company: true }
       });
-      
-      if (existingCompany) {
-        console.log(`🚧 Dev mode: Using existing company with brand voice: ${existingCompany.name}`);
-        return res.json(existingCompany);
+
+      if (!devUser) {
+        console.log('🚧 Dev mode: Creating dev user');
+        devUser = await prisma.user.create({
+          data: {
+            clerkId: 'dev_user_123',
+            email: 'dev@example.com'
+          },
+          include: { company: true }
+        });
       }
+
+      // If dev user has no company, find an existing company with brand voice data and assign it
+      if (!devUser.company) {
+        const existingCompany = await prisma.company.findFirst({
+          where: {
+            AND: [
+              { brandVoiceData: { not: null } },
+              { name: { not: 'temp' } },
+              { userId: null } // Unassigned company
+            ]
+          }
+        });
+
+        if (existingCompany) {
+          console.log(`🚧 Dev mode: Assigning existing company ${existingCompany.name} to dev user`);
+          const updatedCompany = await prisma.company.update({
+            where: { id: existingCompany.id },
+            data: { userId: devUser.id }
+          });
+          return res.json(updatedCompany);
+        }
+      }
+
+      if (devUser.company) {
+        console.log(`🚧 Dev mode: Using dev user's company: ${devUser.company.name}`);
+        return res.json(devUser.company);
+      }
+
+      // No company found, will proceed to create one or return null
+      console.log('🚧 Dev mode: No company found for dev user');
+      return res.json(null);
     }
     
     let user = await prisma.user.findUnique({
@@ -142,6 +176,18 @@ router.post('/', requireAuth, async (req, res) => {
             timezone: 'America/New_York'
           }
         }
+      });
+    }
+
+    // Generate custom LinkedIn prompt after brand onboarding completion
+    if (brandVoiceData && Object.keys(brandVoiceData).length > 0) {
+      console.log(`🎯 Triggering custom prompt generation for company: ${company.name}`);
+      
+      // Generate custom prompt in background (don't wait for it)
+      generateCustomLinkedInPrompt(company.id).then(() => {
+        console.log(`✨ Custom LinkedIn prompt generated for ${company.name}`);
+      }).catch(error => {
+        console.error(`❌ Failed to generate custom prompt for ${company.name}:`, error);
       });
     }
 
@@ -400,6 +446,279 @@ router.put('/webhook/toggle', requireAuth, async (req, res) => {
   } catch (error) {
     console.error('Webhook toggle error:', error);
     res.status(500).json({ error: 'Failed to toggle webhook status' });
+  }
+});
+
+// ========================
+// PROMPT MANAGEMENT ENDPOINTS
+// ========================
+
+// Get current custom LinkedIn prompt
+router.get('/prompt', requireAuth, async (req, res) => {
+  try {
+    const clerkId = getUserId(req);
+    
+    // Use the same logic as /current endpoint to find the right company
+    let company;
+    if (clerkId === 'dev_user_123') {
+      // Find or create dev user
+      let devUser = await prisma.user.findUnique({
+        where: { clerkId: 'dev_user_123' },
+        include: { company: true }
+      });
+
+      if (!devUser) {
+        console.log('🚧 Dev mode: Creating dev user');
+        devUser = await prisma.user.create({
+          data: {
+            clerkId: 'dev_user_123',
+            email: 'dev@example.com'
+          },
+          include: { company: true }
+        });
+      }
+
+      // If dev user has no company, find an existing company with brand voice data and assign it
+      if (!devUser.company) {
+        const existingCompany = await prisma.company.findFirst({
+          where: {
+            AND: [
+              { brandVoiceData: { not: null } },
+              { name: { not: 'temp' } },
+              { userId: null } // Unassigned company
+            ]
+          }
+        });
+
+        if (existingCompany) {
+          console.log(`🚧 Dev mode: Assigning existing company ${existingCompany.name} to dev user`);
+          const updatedCompany = await prisma.company.update({
+            where: { id: existingCompany.id },
+            data: { userId: devUser.id }
+          });
+          company = updatedCompany;
+        }
+      } else {
+        company = devUser.company;
+      }
+      
+      if (!company) {
+        return res.status(404).json({ error: 'No company found in dev mode.' });
+      }
+    } else {
+      let user = await prisma.user.findUnique({
+        where: { clerkId },
+        include: { company: true }
+      });
+
+      // Just-in-time user creation: if user doesn't exist, create them
+      if (!user) {
+        console.log(`Creating new user for Clerk ID: ${clerkId}`);
+        user = await prisma.user.create({
+          data: {
+            clerkId,
+            email: req.auth.user?.emailAddresses?.[0]?.emailAddress || `${clerkId}@example.com`
+          },
+          include: { company: true }
+        });
+      }
+
+      if (!user.company) {
+        return res.status(404).json({ error: 'Company profile not found. Please complete onboarding first.' });
+      }
+      company = user.company;
+    }
+
+    // Get or generate custom prompt
+    const prompt = await getCustomLinkedInPrompt(company.id);
+    const hasCustomPrompt = !!company.customLinkedInPrompt;
+
+    res.json({
+      prompt,
+      lastGenerated: company.updatedAt,
+      lastModified: company.updatedAt,
+      isCustom: hasCustomPrompt,
+      companyName: company.name
+    });
+
+  } catch (error) {
+    console.error('Prompt fetch error:', error);
+    res.status(500).json({ error: 'Failed to get custom prompt' });
+  }
+});
+
+// Update custom LinkedIn prompt
+router.put('/prompt', requireAuth, async (req, res) => {
+  try {
+    const clerkId = getUserId(req);
+    const { prompt } = req.body;
+
+    if (!prompt || typeof prompt !== 'string') {
+      return res.status(400).json({ error: 'Prompt content is required' });
+    }
+
+    if (prompt.length > 10000) {
+      return res.status(400).json({ error: 'Prompt too long (max 10,000 characters)' });
+    }
+
+    // Basic validation - ensure prompt has essential structure
+    const requiredElements = ['Hook:', 'Content Pillar:', 'Brand Voice'];
+    const missingElements = requiredElements.filter(element => !prompt.includes(element));
+    
+    if (missingElements.length > 0) {
+      return res.status(400).json({ 
+        error: `Prompt missing required elements: ${missingElements.join(', ')}`,
+        hint: 'Ensure your prompt includes placeholders for Hook, Content Pillar, and Brand Voice data'
+      });
+    }
+
+    // In dev mode with mock auth, use existing company with brand voice data
+    let company;
+    if (clerkId === 'dev_user_123') {
+      company = await prisma.company.findFirst({
+        where: {
+          AND: [
+            { brandVoiceData: { not: null } },
+            { name: { not: 'temp' } }
+          ]
+        }
+      });
+      
+      if (!company) {
+        return res.status(404).json({ error: 'No company found in dev mode.' });
+      }
+    } else {
+      const user = await prisma.user.findUnique({
+        where: { clerkId },
+        include: { company: true }
+      });
+
+      if (!user || !user.company) {
+        return res.status(404).json({ error: 'Company profile not found. Please complete onboarding first.' });
+      }
+      company = user.company;
+    }
+
+    // Update the custom prompt
+    const updatedCompany = await prisma.company.update({
+      where: { id: company.id },
+      data: {
+        customLinkedInPrompt: prompt
+      }
+    });
+
+    console.log(`📝 Custom LinkedIn prompt updated for ${updatedCompany.name} by user`);
+
+    res.json({
+      prompt,
+      lastModified: updatedCompany.updatedAt,
+      message: 'Custom prompt updated successfully',
+      companyName: updatedCompany.name
+    });
+
+  } catch (error) {
+    console.error('Prompt update error:', error);
+    res.status(500).json({ error: 'Failed to update custom prompt' });
+  }
+});
+
+// Regenerate custom LinkedIn prompt from brand voice data
+router.post('/prompt/regenerate', requireAuth, async (req, res) => {
+  try {
+    const clerkId = getUserId(req);
+    
+    // Use the same logic as /current endpoint to find the right company
+    let company;
+    if (clerkId === 'dev_user_123') {
+      // Find or create dev user
+      let devUser = await prisma.user.findUnique({
+        where: { clerkId: 'dev_user_123' },
+        include: { company: true }
+      });
+
+      if (!devUser) {
+        console.log('🚧 Dev mode: Creating dev user');
+        devUser = await prisma.user.create({
+          data: {
+            clerkId: 'dev_user_123',
+            email: 'dev@example.com'
+          },
+          include: { company: true }
+        });
+      }
+
+      // If dev user has no company, find an existing company with brand voice data and assign it
+      if (!devUser.company) {
+        const existingCompany = await prisma.company.findFirst({
+          where: {
+            AND: [
+              { brandVoiceData: { not: null } },
+              { name: { not: 'temp' } },
+              { userId: null } // Unassigned company
+            ]
+          }
+        });
+
+        if (existingCompany) {
+          console.log(`🚧 Dev mode: Assigning existing company ${existingCompany.name} to dev user`);
+          const updatedCompany = await prisma.company.update({
+            where: { id: existingCompany.id },
+            data: { userId: devUser.id }
+          });
+          company = updatedCompany;
+        }
+      } else {
+        company = devUser.company;
+      }
+      
+      if (!company) {
+        return res.status(404).json({ error: 'No company found in dev mode.' });
+      }
+    } else {
+      let user = await prisma.user.findUnique({
+        where: { clerkId },
+        include: { company: true }
+      });
+
+      // Just-in-time user creation: if user doesn't exist, create them
+      if (!user) {
+        console.log(`Creating new user for Clerk ID: ${clerkId}`);
+        user = await prisma.user.create({
+          data: {
+            clerkId,
+            email: req.auth.user?.emailAddresses?.[0]?.emailAddress || `${clerkId}@example.com`
+          },
+          include: { company: true }
+        });
+      }
+
+      if (!user.company) {
+        return res.status(404).json({ error: 'Company profile not found. Please complete onboarding first.' });
+      }
+      company = user.company;
+    }
+
+    if (!company.brandVoiceData || Object.keys(company.brandVoiceData).length === 0) {
+      return res.status(400).json({ 
+        error: 'No brand voice data available. Please complete brand onboarding first.' 
+      });
+    }
+
+    console.log(`🔄 Regenerating custom LinkedIn prompt for ${company.name}`);
+
+    // Force regeneration of custom prompt
+    const newPrompt = await generateCustomLinkedInPrompt(company.id);
+
+    res.json({
+      prompt: newPrompt,
+      lastGenerated: new Date().toISOString(),
+      message: 'Custom prompt regenerated successfully from brand voice data',
+      companyName: company.name
+    });
+
+  } catch (error) {
+    console.error('Prompt regeneration error:', error);
+    res.status(500).json({ error: 'Failed to regenerate custom prompt' });
   }
 });
 

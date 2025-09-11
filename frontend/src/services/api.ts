@@ -225,6 +225,38 @@ export const companyApi = {
   }> => {
     const response = await api.put('/api/company/webhook/toggle');
     return response.data;
+  },
+
+  // Prompt management
+  getPrompt: async (): Promise<{
+    prompt: string;
+    lastGenerated: string;
+    lastModified: string;
+    isCustom: boolean;
+    companyName: string;
+  }> => {
+    const response = await api.get('/api/company/prompt');
+    return response.data;
+  },
+
+  updatePrompt: async (prompt: string): Promise<{
+    prompt: string;
+    lastModified: string;
+    message: string;
+    companyName: string;
+  }> => {
+    const response = await api.put('/api/company/prompt', { prompt });
+    return response.data;
+  },
+
+  regeneratePrompt: async (): Promise<{
+    prompt: string;
+    lastGenerated: string;
+    message: string;
+    companyName: string;
+  }> => {
+    const response = await api.post('/api/company/prompt/regenerate');
+    return response.data;
   }
 };
 

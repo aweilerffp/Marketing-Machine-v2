@@ -1,18 +1,103 @@
 import { SignedIn, SignedOut } from '@clerk/clerk-react';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Navbar from '../components/layout/Navbar';
+import { companyApi } from '../services/api';
 
 export default function Settings() {
   const [activeTab, setActiveTab] = useState('general');
   const [linkedinConnected, setLinkedinConnected] = useState(false);
   const [readaiConnected, setReadaiConnected] = useState(false);
+  
+  // Prompt management state
+  const [promptData, setPromptData] = useState<{
+    prompt: string;
+    lastGenerated: string;
+    lastModified: string;
+    isCustom: boolean;
+    companyName: string;
+  } | null>(null);
+  const [promptLoading, setPromptLoading] = useState(false);
+  const [promptSaving, setSaving] = useState(false);
+  const [showAdvanced, setShowAdvanced] = useState(false);
+
+  // Handle double-click to unlock advanced settings
+  const handleAdvancedUnlock = () => {
+    const shouldUnlock = window.confirm(
+      '⚠️ WARNING: Advanced Prompt Settings\n\n' +
+      'Editing the AI prompt can significantly impact the quality and style of your LinkedIn posts. ' +
+      'Only proceed if you understand prompt engineering.\n\n' +
+      'This could ruin the performance of your posts if modified incorrectly.\n\n' +
+      'Do you want to proceed?'
+    );
+    
+    if (shouldUnlock) {
+      setShowAdvanced(true);
+      setActiveTab('advanced');
+      console.log('🔓 Advanced prompt settings unlocked');
+    }
+  };
 
   const tabs = [
     { id: 'general', name: 'General' },
     { id: 'integrations', name: 'Integrations' },
     { id: 'brand', name: 'Brand Voice' },
     { id: 'schedule', name: 'Schedule' },
+    ...(showAdvanced ? [{ id: 'advanced', name: 'Advanced' }] : []),
   ];
+
+  // Load prompt data when advanced tab is accessed
+  const loadPromptData = async () => {
+    setPromptLoading(true);
+    try {
+      const data = await companyApi.getPrompt();
+      setPromptData(data);
+    } catch (error) {
+      console.error('Failed to load prompt:', error);
+    } finally {
+      setPromptLoading(false);
+    }
+  };
+
+  // Save prompt changes
+  const savePrompt = async () => {
+    if (!promptData) return;
+    setSaving(true);
+    try {
+      const result = await companyApi.updatePrompt(promptData.prompt);
+      setPromptData(prev => prev ? { ...prev, lastModified: result.lastModified } : null);
+      console.log('✅ Prompt saved successfully');
+    } catch (error) {
+      console.error('❌ Failed to save prompt:', error);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Regenerate prompt from brand voice
+  const regeneratePrompt = async () => {
+    if (!promptData) return;
+    setSaving(true);
+    try {
+      const result = await companyApi.regeneratePrompt();
+      setPromptData(prev => prev ? {
+        ...prev,
+        prompt: result.prompt,
+        lastGenerated: result.lastGenerated
+      } : null);
+      console.log('🔄 Prompt regenerated successfully');
+    } catch (error) {
+      console.error('❌ Failed to regenerate prompt:', error);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Load prompt data when advanced tab is first accessed
+  useEffect(() => {
+    if (activeTab === 'advanced' && !promptData) {
+      loadPromptData();
+    }
+  }, [activeTab, promptData]);
 
   const renderTabContent = () => {
     switch (activeTab) {
@@ -171,6 +256,27 @@ export default function Settings() {
                 Update Brand Voice
               </button>
             </div>
+
+            {/* Locked Advanced Prompt Section */}
+            <div className="pt-6 border-t border-gray-200">
+              <div 
+                className="bg-gray-50 border-2 border-dashed border-gray-200 rounded-lg p-6 cursor-pointer hover:border-gray-300 hover:bg-gray-100 transition-colors"
+                onDoubleClick={handleAdvancedUnlock}
+              >
+                <div className="text-center">
+                  <svg className="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                  </svg>
+                  <h3 className="mt-2 text-sm font-medium text-gray-900">Advanced Prompt Settings</h3>
+                  <p className="mt-1 text-sm text-gray-500">
+                    Double-click to access custom LinkedIn prompt editor
+                  </p>
+                  <p className="mt-2 text-xs text-gray-400">
+                    ⚠️ Advanced users only - can impact post quality
+                  </p>
+                </div>
+              </div>
+            </div>
           </div>
         );
 
@@ -229,6 +335,135 @@ export default function Settings() {
                 Save Schedule
               </button>
             </div>
+          </div>
+        );
+
+      case 'advanced':
+        return (
+          <div className="space-y-6">
+            {promptLoading ? (
+              <div className="text-center py-8">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
+                <p className="text-gray-500 mt-2">Loading prompt data...</p>
+              </div>
+            ) : promptData ? (
+              <>
+                <div className="bg-orange-50 border border-orange-200 rounded-md p-4">
+                  <div className="flex">
+                    <div className="flex-shrink-0">
+                      <svg className="h-5 w-5 text-orange-400" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                      </svg>
+                    </div>
+                    <div className="ml-3">
+                      <h3 className="text-sm font-medium text-orange-800">
+                        Advanced Settings - Use with Caution
+                      </h3>
+                      <p className="text-sm text-orange-700 mt-1">
+                        Modifying the AI prompt will affect the quality and style of all LinkedIn posts generated for {promptData.companyName}. 
+                        Only edit if you understand prompt engineering.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <div>
+                  <div className="flex items-center justify-between mb-4">
+                    <div>
+                      <h3 className="text-lg font-medium text-gray-900">Custom LinkedIn Prompt</h3>
+                      <p className="text-sm text-gray-500">
+                        {promptData.isCustom ? 'Custom prompt' : 'AI-generated prompt'} • 
+                        Last modified: {new Date(promptData.lastModified).toLocaleDateString()}
+                      </p>
+                    </div>
+                    <div className="space-x-2">
+                      <button
+                        onClick={regeneratePrompt}
+                        disabled={promptSaving}
+                        className="inline-flex items-center px-3 py-1.5 border border-gray-300 text-sm font-medium rounded text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50"
+                      >
+                        {promptSaving ? (
+                          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-gray-600 mr-2"></div>
+                        ) : (
+                          <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                          </svg>
+                        )}
+                        Regenerate from Brand Voice
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="space-y-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Prompt Content ({promptData.prompt.length} characters)
+                      </label>
+                      <textarea
+                        value={promptData.prompt}
+                        onChange={(e) => setPromptData(prev => prev ? { ...prev, prompt: e.target.value } : null)}
+                        rows={20}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono text-sm"
+                        placeholder="Loading prompt..."
+                      />
+                      <p className="text-xs text-gray-500 mt-1">
+                        Ensure your prompt includes placeholders for: Hook, Content Pillar, and Brand Voice data
+                      </p>
+                    </div>
+
+                    <div className="bg-gray-50 rounded-lg p-4">
+                      <h4 className="text-sm font-medium text-gray-900 mb-2">Variable Substitutions</h4>
+                      <div className="grid grid-cols-2 gap-4 text-xs">
+                        <div>
+                          <span className="font-mono bg-gray-200 px-1 rounded">Hook:</span> → Meeting insight/hook text
+                        </div>
+                        <div>
+                          <span className="font-mono bg-gray-200 px-1 rounded">Content Pillar:</span> → Post category
+                        </div>
+                        <div>
+                          <span className="font-mono bg-gray-200 px-1 rounded">Brand Voice:</span> → Company brand voice data
+                        </div>
+                        <div>
+                          <span className="font-mono bg-gray-200 px-1 rounded">Meeting Context:</span> → Meeting transcript/summary
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                
+                <div className="pt-6 border-t border-gray-200">
+                  <div className="flex items-center justify-between">
+                    <div className="text-sm text-gray-500">
+                      Changes take effect immediately for new posts
+                    </div>
+                    <button
+                      onClick={savePrompt}
+                      disabled={promptSaving}
+                      className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 disabled:opacity-50 flex items-center"
+                    >
+                      {promptSaving ? (
+                        <>
+                          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                          Saving...
+                        </>
+                      ) : (
+                        'Save Prompt'
+                      )}
+                    </button>
+                  </div>
+                </div>
+              </>
+            ) : (
+              <div className="text-center py-8">
+                <p className="text-gray-500">Failed to load prompt data</p>
+                <button
+                  onClick={loadPromptData}
+                  className="mt-2 text-blue-600 hover:text-blue-700"
+                >
+                  Retry
+                </button>
+              </div>
+            )}
           </div>
         );
 

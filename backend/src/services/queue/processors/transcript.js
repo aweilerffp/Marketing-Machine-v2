@@ -157,7 +157,8 @@ export const processTranscript = async (job) => {
           hookData.pillar || 'General',
           brandVoice,
           transcript,
-          hookContext
+          hookContext,
+          company?.id
         );
 
         // Generate accompanying image

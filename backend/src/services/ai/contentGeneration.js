@@ -1,5 +1,7 @@
 import OpenAI from 'openai';
 import { processBrandVoice, formatBrandVoiceForPrompt } from './brandVoiceProcessor.js';
+import { getCustomLinkedInPrompt } from './promptGeneration.js';
+import prisma from '../../models/prisma.js';
 
 // Initialize OpenAI client
 const openai = process.env.OPENAI_API_KEY ? new OpenAI({
@@ -245,9 +247,10 @@ Return only the rewritten content, no explanations or additional text.
  * @param {object} brandVoiceData - Company's brand voice data
  * @param {string} meetingSummary - Optional meeting context
  * @param {object} hookContext - Strategic context from hook generation
+ * @param {string} companyId - Optional company ID for custom prompt lookup
  * @returns {Promise<object>} Enhanced LinkedIn post content
  */
-export async function generateEnhancedLinkedInPost(hookText, pillar, brandVoiceData, meetingSummary = '', hookContext = null) {
+export async function generateEnhancedLinkedInPost(hookText, pillar, brandVoiceData, meetingSummary = '', hookContext = null, companyId = null) {
   // If no OpenAI key, return mock data
   if (!openai || !process.env.OPENAI_API_KEY || process.env.OPENAI_API_KEY === 'your_openai_api_key_here') {
     console.log('🤖 Using mock enhanced LinkedIn post - no OpenAI key configured');
@@ -256,62 +259,40 @@ export async function generateEnhancedLinkedInPost(hookText, pillar, brandVoiceD
 
   try {
     // Process brand voice using unified processor
-    console.log('🔍 Debug: generateEnhancedLinkedInPost called with:', { hookText, pillar, brandVoiceData: typeof brandVoiceData, meetingSummary: typeof meetingSummary, hookContext: !!hookContext });
-    const processedBrandVoice = processBrandVoice(brandVoiceData);
-    console.log('🔍 Debug: Processed brand voice:', { industry: processedBrandVoice.industry, hasContext: !!hookContext });
-    const prompt = `You are a senior LinkedIn copywriter creating high-converting content for business professionals.
+    console.log('🔍 Debug: generateEnhancedLinkedInPost called with:', { hookText, pillar, brandVoiceData: typeof brandVoiceData, meetingSummary: typeof meetingSummary, hookContext: !!hookContext, companyId });
+    
+    let prompt;
+    
+    // Try to get custom prompt for the company
+    if (companyId) {
+      try {
+        console.log(`🎯 Attempting to use custom prompt for company: ${companyId}`);
+        prompt = await getCustomLinkedInPrompt(companyId);
+        console.log(`✨ Using custom LinkedIn prompt for company: ${companyId}`);
+      } catch (error) {
+        console.warn(`⚠️ Failed to get custom prompt for company ${companyId}, falling back to generic:`, error.message);
+        prompt = getGenericLinkedInPrompt();
+      }
+    } else {
+      console.log('📝 No company ID provided, using generic prompt');
+      prompt = getGenericLinkedInPrompt(); 
+    }
+
+    // Generic LinkedIn prompt function
+    function getGenericLinkedInPrompt() {
+      return `Create an engaging LinkedIn post based on the provided content hook and context.
 
 ## CONTENT REQUIREMENTS
-- 1500-2200 characters (LinkedIn optimal)
-- 6th grade reading level
-- No em dashes (use periods, commas, short sentences)
-- Focus on industry pain points and practical solutions
-- Professional yet conversational tone
-
-## STORY ARCHITECTURE OPTIONS
-Choose the most fitting approach:
-
-**Problem/Solution Pattern:**
-1. Contrarian hook that challenges conventional thinking
-2. Specific business problem scenario with stakes
-3. Why typical approaches fail
-4. Your solution with proof/results
-5. Engagement question
-
-**Case Study Format:**
-1. Transformation headline
-2. Starting situation (business chaos/challenge)
-3. Key insight/strategy implemented
-4. Results and broader implications
-5. Discussion question
-
-**Industry Insight:**
-1. Bold prediction or counter-intuitive statement
-2. Supporting evidence and context
-3. What this means for professionals
-4. Actionable next steps
-5. Thought-provoking question
-
-## ENGAGEMENT ELEMENTS
-- Use specific numbers, timeframes, percentages
-- Include social proof or insider knowledge
-- Connect to current industry trends
-- Show personal/business stakes of inaction
-- End with questions that invite professional discussion
-
-## QUALITY STANDARDS
-- Would busy professionals stop scrolling for this?
-- Does it teach something valuable in under 60 seconds?
-- Is the solution connection natural, not forced?
-- Does the question genuinely spark discussion?
-- Is every sentence earning its place?
+- Write in a professional but conversational tone
+- Include actionable insights or advice
+- Use engaging hooks and clear structure
+- Optimize for LinkedIn engagement
+- Keep posts between 150-300 words
+- Include relevant emojis sparingly
 
 ## INPUT DATA
-Hook: "${hookText}"
+Hook: "{HOOK_LIST}"
 Content Pillar: "${pillar}"
-
-Brand Voice Context:
-${formatBrandVoiceForPrompt(processedBrandVoice, 'context')}
 
 ${meetingSummary ? `Meeting Context: "${meetingSummary}"` : ''}
 
@@ -325,13 +306,38 @@ ${hookContext.tweet ? `Related Tweet Version: "${hookContext.tweet}"` : ''}
 ${hookContext.preGeneratedLinkedIn ? `Hook Generator's LinkedIn Attempt: "${hookContext.preGeneratedLinkedIn}" (use as reference only, create something better)` : ''}
 ` : ''}
 
-## INSTRUCTIONS
-1. Use the brand voice data to understand the company's industry, target audience, and communication style
-2. Craft content that aligns with the specified content pillar
-3. ${hookContext ? 'BUILD ON the hook generation insights - leverage the original quote, strategic reasoning, and confidence score to create a cohesive narrative' : 'Transform the hook into engaging LinkedIn content using one of the story architectures'}
-4. ${hookContext ? 'Connect the original meeting quote to broader business implications while maintaining the strategic intent identified in hook generation' : 'Ensure the company connection feels natural and valuable'}
-5. Focus on efficiency gains, growth opportunities, and problem-solving themes
-6. ${hookContext ? 'Consider how this content fits with the related blog and tweet concepts for multi-platform consistency' : 'Maintain professional yet conversational tone'}
+Return clean JSON:
+{
+  "post": "Complete LinkedIn post with natural flow and strong engagement",
+  "reasoning": "Brief explanation of approach and architecture chosen", 
+  "estimatedCharacterCount": number
+}`;
+    }
+
+    // Replace hook placeholder in custom prompt
+    const hookListPlaceholder = '{HOOK_LIST}';
+    if (prompt.includes(hookListPlaceholder)) {
+      prompt = prompt.replace(hookListPlaceholder, hookText);
+    } else {
+      // If custom prompt doesn't have the placeholder, append the hook data
+      prompt += `
+
+## INPUT DATA
+Hook: "${hookText}"
+Content Pillar: "${pillar}"
+
+${meetingSummary ? `Meeting Context: "${meetingSummary}"` : ''}
+
+${hookContext ? `
+
+## HOOK GENERATION INSIGHTS
+Original Quote: "${hookContext.originalInsight}"
+Strategic Reasoning: "${hookContext.reasoning}"
+Confidence Score: ${hookContext.confidence}
+${hookContext.blog ? `Related Blog Concept: "${hookContext.blog.title}" - ${hookContext.blog.hook}` : ''}
+${hookContext.tweet ? `Related Tweet Version: "${hookContext.tweet}"` : ''}
+${hookContext.preGeneratedLinkedIn ? `Hook Generator's LinkedIn Attempt: "${hookContext.preGeneratedLinkedIn}" (use as reference only, create something better)` : ''}
+` : ''}
 
 Return clean JSON:
 {
@@ -339,6 +345,7 @@ Return clean JSON:
   "reasoning": "Brief explanation of approach and architecture chosen",
   "estimatedCharacterCount": number
 }`;
+    }
 
     const completion = await openai.chat.completions.create({
       model: process.env.OPENAI_MODEL || 'gpt-4o-mini',

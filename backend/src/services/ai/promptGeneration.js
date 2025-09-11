@@ -1,0 +1,307 @@
+import OpenAI from 'openai';
+import prisma from '../../models/prisma.js';
+import { processBrandVoice } from './brandVoiceProcessor.js';
+
+// Initialize OpenAI client
+const openai = process.env.OPENAI_API_KEY ? new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY,
+}) : null;
+
+/**
+ * Auto-detect industry and ICP from brand voice data using AI and web search
+ * @param {object} brandVoiceData - Company's brand voice data
+ * @returns {Promise<object>} Enhanced brand data with detected industry/ICP
+ */
+export async function autoDetectIndustryAndICP(brandVoiceData) {
+  // If no OpenAI key, return basic processed data
+  if (!openai || !process.env.OPENAI_API_KEY || process.env.OPENAI_API_KEY === 'your_openai_api_key_here') {
+    console.log('🤖 Using basic industry/ICP detection - no OpenAI key configured');
+    return getBasicIndustryICP(brandVoiceData);
+  }
+
+  try {
+    const websiteContent = brandVoiceData.websiteContent || '';
+    const existingIndustry = brandVoiceData.industry || '';
+    const existingTargetAudience = brandVoiceData.targetAudience || '';
+
+    const prompt = `
+Analyze this company's website content and brand data to detect their industry and ideal customer profile (ICP).
+
+WEBSITE CONTENT:
+${websiteContent.substring(0, 2000)}...
+
+EXISTING DATA:
+- Current Industry: ${existingIndustry}
+- Current Target Audience: ${existingTargetAudience}
+
+INSTRUCTIONS:
+1. If existing industry/ICP data is already specific and accurate, keep it
+2. If missing or too generic, detect from website content
+3. Be specific - avoid generic terms like "business professionals"
+4. Focus on the exact market segment they serve
+
+Return JSON with:
+{
+  "industry": "specific industry (e.g., Amazon/ecommerce tools, B2B SaaS, fintech)",
+  "targetAudience": "specific ICP (e.g., Amazon FBA sellers, SaaS founders, financial advisors)", 
+  "industryKeywords": ["keyword1", "keyword2", "keyword3"],
+  "painPoints": ["main pain point 1", "pain point 2"],
+  "confidence": 0.8
+}
+`;
+
+    const completion = await openai.chat.completions.create({
+      model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
+      messages: [
+        { role: 'system', content: 'You are a brand analyst that identifies company industries and target audiences from website content. Always respond with valid JSON.' },
+        { role: 'user', content: prompt }
+      ],
+      max_tokens: 800,
+      temperature: 0.3
+    });
+
+    const response = completion.choices[0]?.message?.content || '{}';
+    
+    try {
+      const detectedData = JSON.parse(response);
+      console.log(`✨ Auto-detected industry: ${detectedData.industry}, ICP: ${detectedData.targetAudience}`);
+      
+      return {
+        ...brandVoiceData,
+        industry: detectedData.industry || brandVoiceData.industry || 'Technology',
+        targetAudience: detectedData.targetAudience || brandVoiceData.targetAudience || 'Business professionals',
+        industryKeywords: detectedData.industryKeywords || [],
+        painPoints: detectedData.painPoints || [],
+        detectionConfidence: detectedData.confidence || 0.5
+      };
+    } catch (parseError) {
+      console.warn('⚠️ Failed to parse industry/ICP detection, using existing data');
+      return brandVoiceData;
+    }
+
+  } catch (error) {
+    console.error('❌ Error detecting industry/ICP:', error);
+    return brandVoiceData;
+  }
+}
+
+/**
+ * Generate custom LinkedIn prompt from template using company-specific data
+ * @param {string} companyId - Company ID
+ * @returns {Promise<string>} Custom LinkedIn prompt
+ */
+export async function generateCustomLinkedInPrompt(companyId) {
+  // If no OpenAI key, return basic template
+  if (!openai || !process.env.OPENAI_API_KEY || process.env.OPENAI_API_KEY === 'your_openai_api_key_here') {
+    console.log('🤖 Using basic prompt template - no OpenAI key configured');
+    return getBasicPromptTemplate();
+  }
+
+  try {
+    // Get company data
+    const company = await prisma.company.findUnique({
+      where: { id: companyId }
+    });
+
+    if (!company) {
+      throw new Error(`Company not found: ${companyId}`);
+    }
+
+    // Process and enhance brand voice data
+    const processedBrandVoice = processBrandVoice(company.brandVoiceData);
+    const enhancedBrandData = await autoDetectIndustryAndICP(processedBrandVoice);
+
+    const metaPrompt = `
+You are a prompt engineering expert creating a custom LinkedIn content generation prompt for a specific company.
+
+COMPANY DATA:
+- Company Name: ${company.name}
+- Industry: ${enhancedBrandData.industry}
+- Target Audience (ICP): ${enhancedBrandData.targetAudience}
+- Industry Keywords: ${enhancedBrandData.industryKeywords?.join(', ') || 'N/A'}
+- Pain Points: ${enhancedBrandData.painPoints?.join(', ') || 'N/A'}
+
+BRAND VOICE CONTEXT:
+${enhancedBrandData.websiteContent?.substring(0, 1500) || 'No website content available'}
+
+PROMPT TEMPLATE TO CUSTOMIZE:
+## SYSTEM
+You are {company's} senior copywriter specializing in high-converting LinkedIn content for {ICP}.
+
+## KNOWLEDGE RETRIEVAL  (sent below this prompt)
+1. "{company} Brand Voice Guide"
+3. "High-Converting Frameworks" → query: "engagement frameworks"   
+
+## CONTENT REQUIREMENTS
+**HARD CONSTRAINTS:**
+- Each post: 1500-2200 characters (optimal for LinkedIn algorithm)
+- Write at 6th grade reading level
+- No em dashes (use periods, commas, or short sentences instead)
+- Include 1-2 {company industry} keywords naturally{ insert some examples}
+- Focus on {ICP} pain points and {Company} solutions 
+
+## CONTENT STRATEGY (Quality Improvements)
+### 1. HOOK MASTERY
+- **Pattern Interrupt:** Start with a contrarian statement about {industry)
+- **Curiosity Gap:** Create immediate intrigue within 8-12 words
+- **Emotional Trigger:** Connect to {ICP} frustration, lost time, or profit aspirations
+- **Specificity:** Use exact numbers, timeframes, or {Industry} scenarios
+
+### 2. STORY ARCHITECTURE (Replace Rigid Structure)
+**Option A - Problem/Agitation/Solution:**
+- Line 1: Contrarian hook about {Industry} 
+- Para 1: Specific {ICP} problem scenario (with revenue stakes)
+- Para 2: Why conventional {Industry} approaches fail
+- Para 3: {company's} unique solution with proof
+- Para 4: Call-to-action question
+
+**Option B - Case Study Format:**
+- Line 1: {ICP} transformation headline
+- Para 1: {ICP} starting situation 
+- Para 2: Key insight/strategy implemented with {Company}
+- Para 3: Results and broader implications for {ICP} 
+- Para 4: Engagement question
+
+**Option C - Industry Insight:**
+- Line 1: Bold prediction about {industry}
+- Para 1: Supporting evidence and {industry} content
+- Para 2: What this means for {ICPs} 
+- Para 3: Action steps with {company} tie-in
+- Para 4: Discussion question
+
+### 3. ENGAGEMENT AMPLIFIERS
+- **Social Proof:** Specific {ICP} results and time savings
+- **Insider Knowledge:** {Industry} secrets or little-known {industry}facts
+- **Trend Connections:** Link to current {Industry}  changes
+- **Personal Stakes:** What happens when {ICPs} don't take action
+- **Future Casting:** Where {industry} is heading
+
+### 4. CONVERSION PSYCHOLOGY
+- **Scarcity:** Limited time to…
+- **Authority:** Reference {industry} expertise & knowledge
+- **Community:** "Successful {ICPs} are already streamlining this"
+- **Loss Aversion:** Revenue lost from inaction  
+
+## QUALITY CHECKPOINTS
+Before finalizing each post, verify:
+- [ ] Would an {ICP} stop scrolling for this hook?
+- [ ] Does it teach something valuable about {industry} in 60 seconds?
+- [ ] Is the {company} connection natural, not forced?
+- [ ] Does the question genuinely invite {ICP} discussion?
+- [ ] Is every sentence earning its place for{ICP}?
+
+## INSTRUCTIONS
+1. Retrieve brand voice and reference posts
+2. Choose most appropriate story architecture for each hook
+3. Craft posts that feel like {ICP to ICP} advice, not corporate
+4. Prioritize value delivery over word count targets
+5. End with questions that spark genuine {industry}  discussions
+6. Skip hooks that don't naturally connect to {industry}
+
+## INPUT
+Hooks: {HOOK_LIST}
+BEGIN
+
+INSTRUCTIONS:
+1. Replace ALL placeholder variables {company}, {ICP}, {industry}, etc. with the actual company data provided above
+2. Add 3-5 specific industry keyword examples in the constraints section
+3. Customize the pain points and solutions to match this company's specific focus
+4. Make the language and tone match the company's brand voice from the website content
+5. Keep all the structural elements but make them hyper-specific to this company
+
+Return the complete customized prompt ready to use for LinkedIn post generation.
+`;
+
+    const completion = await openai.chat.completions.create({
+      model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
+      messages: [
+        { role: 'system', content: 'You are a prompt engineering expert that customizes content generation prompts for specific companies. Return the complete customized prompt.' },
+        { role: 'user', content: metaPrompt }
+      ],
+      max_tokens: 2000,
+      temperature: 0.3
+    });
+
+    const customPrompt = completion.choices[0]?.message?.content || getBasicPromptTemplate();
+    
+    // Store the custom prompt in the database
+    await prisma.company.update({
+      where: { id: companyId },
+      data: { customLinkedInPrompt: customPrompt }
+    });
+
+    console.log(`✨ Generated custom LinkedIn prompt for ${company.name}`);
+    return customPrompt;
+
+  } catch (error) {
+    console.error('❌ Error generating custom LinkedIn prompt:', error);
+    return getBasicPromptTemplate();
+  }
+}
+
+/**
+ * Get or generate custom prompt for a company
+ * @param {string} companyId - Company ID  
+ * @returns {Promise<string>} Custom prompt (existing or newly generated)
+ */
+export async function getCustomLinkedInPrompt(companyId) {
+  try {
+    const company = await prisma.company.findUnique({
+      where: { id: companyId }
+    });
+
+    if (!company) {
+      throw new Error(`Company not found: ${companyId}`);
+    }
+
+    // If custom prompt already exists, return it
+    if (company.customLinkedInPrompt) {
+      console.log(`📋 Using existing custom prompt for ${company.name}`);
+      return company.customLinkedInPrompt;
+    }
+
+    // Generate new custom prompt
+    console.log(`🎯 Generating new custom prompt for ${company.name}`);
+    return await generateCustomLinkedInPrompt(companyId);
+    
+  } catch (error) {
+    console.error('❌ Error getting custom LinkedIn prompt:', error);
+    return getBasicPromptTemplate();
+  }
+}
+
+/**
+ * Basic industry/ICP detection fallback
+ */
+function getBasicIndustryICP(brandVoiceData) {
+  return {
+    ...brandVoiceData,
+    industry: brandVoiceData.industry || 'Technology', 
+    targetAudience: brandVoiceData.targetAudience || 'Business professionals',
+    industryKeywords: [],
+    painPoints: [],
+    detectionConfidence: 0.3
+  };
+}
+
+/**
+ * Basic prompt template fallback
+ */
+function getBasicPromptTemplate() {
+  return `You are a senior LinkedIn copywriter creating high-converting content for business professionals.
+
+Create LinkedIn posts that:
+1. Open with compelling hooks that grab attention
+2. Provide valuable insights or actionable advice  
+3. Use a conversational but professional tone
+4. Include calls-to-action or thought-provoking questions
+5. Are optimized for LinkedIn engagement (1500-2200 characters)
+6. Focus on industry pain points and practical solutions
+
+Return clean JSON with:
+{
+  "post": "Complete LinkedIn post with natural flow and strong engagement",
+  "reasoning": "Brief explanation of approach chosen", 
+  "estimatedCharacterCount": number
+}`;
+}
