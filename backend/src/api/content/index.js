@@ -9,10 +9,165 @@ const router = express.Router();
 // Mount demo routes
 router.use('/demo', demoRouter);
 
+// Get consolidated dashboard data (posts + meetings + stats) in one call
+router.get('/dashboard', requireAuth, async (req, res) => {
+  try {
+    const clerkId = getUserId(req);
+    const { limit = '25' } = req.query;
+    const limitNum = Math.min(50, Math.max(1, parseInt(limit)));
+    
+    const user = await prisma.user.findUnique({
+      where: { clerkId },
+      include: { company: true }
+    });
+
+    // Build where conditions for posts and meetings
+    let meetingWhereCondition, postWhereCondition;
+    
+    if (process.env.NODE_ENV === 'development' && !user?.company) {
+      console.log('🚧 Dev mode: Dashboard showing all data (no company filter)');
+      meetingWhereCondition = {};
+      postWhereCondition = {};
+    } else if (process.env.NODE_ENV === 'development' && user?.company) {
+      meetingWhereCondition = {
+        OR: [
+          { companyId: user.company.id },
+          { companyId: null }
+        ]
+      };
+      postWhereCondition = {
+        hook: {
+          meeting: {
+            OR: [
+              { companyId: user.company.id },
+              { companyId: null }
+            ]
+          }
+        }
+      };
+    } else {
+      if (!user?.company) {
+        return res.status(404).json({ error: 'Company not found' });
+      }
+      meetingWhereCondition = { companyId: user.company.id };
+      postWhereCondition = {
+        hook: {
+          meeting: {
+            companyId: user.company.id
+          }
+        }
+      };
+    }
+
+    // Fetch all data in parallel for better performance
+    const [posts, meetings, stats] = await Promise.all([
+      // Recent posts
+      prisma.contentPost.findMany({
+        where: postWhereCondition,
+        select: {
+          id: true,
+          content: true,
+          imageUrl: true,
+          status: true,
+          scheduledFor: true,
+          createdAt: true,
+          hook: {
+            select: {
+              id: true,
+              hook: true,
+              pillar: true,
+              meeting: {
+                select: {
+                  title: true,
+                  createdAt: true,
+                  processedStatus: true
+                }
+              }
+            }
+          }
+        },
+        orderBy: { createdAt: 'desc' },
+        take: limitNum
+      }),
+      
+      // Recent meetings
+      prisma.meeting.findMany({
+        where: meetingWhereCondition,
+        select: {
+          id: true,
+          readaiId: true,
+          title: true,
+          summary: true,
+          processedStatus: true,
+          processedAt: true,
+          createdAt: true,
+          contentHooks: {
+            select: {
+              id: true,
+              hook: true,
+              pillar: true,
+              posts: {
+                select: {
+                  id: true,
+                  status: true
+                },
+                take: 5
+              }
+            },
+            take: 10
+          }
+        },
+        orderBy: { createdAt: 'desc' },
+        take: limitNum
+      }),
+      
+      // Dashboard statistics
+      Promise.all([
+        prisma.contentPost.count({
+          where: { ...postWhereCondition, status: 'PENDING' }
+        }),
+        prisma.contentPost.count({
+          where: { ...postWhereCondition, status: 'SCHEDULED' }
+        }),
+        prisma.contentPost.count({
+          where: { ...postWhereCondition, status: 'REJECTED' }
+        }),
+        prisma.meeting.count({
+          where: meetingWhereCondition
+        })
+      ])
+    ]);
+
+    const [pendingCount, scheduledCount, rejectedCount, meetingsCount] = stats;
+
+    res.json({
+      posts,
+      meetings,
+      stats: {
+        totalMeetings: meetingsCount,
+        pendingPosts: pendingCount,
+        scheduledPosts: scheduledCount,
+        rejectedPosts: rejectedCount,
+        totalPosts: posts.length
+      },
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error('Dashboard data fetch error:', error);
+    res.status(500).json({ error: 'Failed to get dashboard data' });
+  }
+});
+
 // Get content posts for approval queue
 router.get('/queue', requireAuth, async (req, res) => {
   try {
     const clerkId = getUserId(req);
+    const { page = '1', limit = '50', status } = req.query;
+    
+    // Parse and validate pagination parameters
+    const pageNum = Math.max(1, parseInt(page));
+    const limitNum = Math.min(100, Math.max(1, parseInt(limit))); // Cap at 100 items per page
+    const skip = (pageNum - 1) * limitNum;
     
     const user = await prisma.user.findUnique({
       where: { clerkId },
@@ -23,9 +178,21 @@ router.get('/queue', requireAuth, async (req, res) => {
     if (!user?.company && process.env.NODE_ENV === 'development') {
       console.log('🚧 Dev mode: Showing all content (no company filter)');
       const posts = await prisma.contentPost.findMany({
-        include: {
+        select: {
+          id: true,
+          content: true,
+          imageUrl: true,
+          imagePrompt: true,
+          status: true,
+          scheduledFor: true,
+          publishedAt: true,
+          createdAt: true,
+          updatedAt: true,
           hook: {
-            include: {
+            select: {
+              id: true,
+              hook: true,
+              pillar: true,
               meeting: {
                 select: {
                   title: true,
@@ -38,9 +205,28 @@ router.get('/queue', requireAuth, async (req, res) => {
         },
         orderBy: {
           createdAt: 'desc'
+        },
+        skip: skip,
+        take: limitNum
+      });
+
+      // Get total count for pagination metadata
+      const totalCount = await prisma.contentPost.count();
+      const totalPages = Math.ceil(totalCount / limitNum);
+      const hasNextPage = pageNum < totalPages;
+      const hasPrevPage = pageNum > 1;
+
+      return res.json({
+        posts,
+        pagination: {
+          currentPage: pageNum,
+          totalPages,
+          totalCount,
+          hasNextPage,
+          hasPrevPage,
+          limit: limitNum
         }
       });
-      return res.json(posts);
     }
 
     // Development mode: Show all posts if no company found OR if posts exist without company
@@ -49,7 +235,7 @@ router.get('/queue', requireAuth, async (req, res) => {
     }
 
     // In development, also show posts that don't have a company association
-    const whereCondition = process.env.NODE_ENV === 'development' 
+    let whereCondition = process.env.NODE_ENV === 'development' 
       ? {
           hook: {
             meeting: {
@@ -68,11 +254,31 @@ router.get('/queue', requireAuth, async (req, res) => {
           }
         };
 
+    // Add status filter if provided
+    if (status && ['PENDING', 'APPROVED', 'SCHEDULED', 'PUBLISHED', 'REJECTED'].includes(status)) {
+      whereCondition = {
+        ...whereCondition,
+        status: status
+      };
+    }
+
     const posts = await prisma.contentPost.findMany({
       where: whereCondition,
-      include: {
+      select: {
+        id: true,
+        content: true,
+        imageUrl: true,
+        imagePrompt: true,
+        status: true,
+        scheduledFor: true,
+        publishedAt: true,
+        createdAt: true,
+        updatedAt: true,
         hook: {
-          include: {
+          select: {
+            id: true,
+            hook: true,
+            pillar: true,
             meeting: {
               select: {
                 title: true,
@@ -85,10 +291,31 @@ router.get('/queue', requireAuth, async (req, res) => {
       },
       orderBy: {
         createdAt: 'desc'
-      }
+      },
+      skip: skip,
+      take: limitNum
     });
 
-    res.json(posts);
+    // Get total count for pagination metadata
+    const totalCount = await prisma.contentPost.count({
+      where: whereCondition
+    });
+
+    const totalPages = Math.ceil(totalCount / limitNum);
+    const hasNextPage = pageNum < totalPages;
+    const hasPrevPage = pageNum > 1;
+
+    res.json({
+      posts,
+      pagination: {
+        currentPage: pageNum,
+        totalPages,
+        totalCount,
+        hasNextPage,
+        hasPrevPage,
+        limit: limitNum
+      }
+    });
   } catch (error) {
     console.error('Queue fetch error:', error);
     res.status(500).json({ error: 'Failed to get content queue' });
@@ -290,22 +517,35 @@ router.get('/meetings', requireAuth, async (req, res) => {
       
       meetings = await prisma.meeting.findMany({
         where: whereCondition,
-        include: {
+        select: {
+          id: true,
+          readaiId: true,
+          title: true,
+          summary: true,
+          processedStatus: true,
+          processedAt: true,
+          createdAt: true,
           contentHooks: {
-            include: {
+            select: {
+              id: true,
+              hook: true,
+              pillar: true,
               posts: {
                 select: {
                   id: true,
                   content: true,
                   status: true
-                }
+                },
+                take: 10 // Limit posts per hook to prevent huge payloads
               }
-            }
+            },
+            take: 20 // Limit hooks per meeting
           }
         },
         orderBy: {
           createdAt: 'desc'
-        }
+        },
+        take: 25 // Limit initial meetings load
       });
     } else {
       if (!user?.company) {
@@ -317,22 +557,35 @@ router.get('/meetings', requireAuth, async (req, res) => {
           companyId: user.company.id
           // Show all meetings regardless of status
         },
-        include: {
+        select: {
+          id: true,
+          readaiId: true,
+          title: true,
+          summary: true,
+          processedStatus: true,
+          processedAt: true,
+          createdAt: true,
           contentHooks: {
-            include: {
+            select: {
+              id: true,
+              hook: true,
+              pillar: true,
               posts: {
                 select: {
                   id: true,
                   content: true,
                   status: true
-                }
+                },
+                take: 10 // Limit posts per hook to prevent huge payloads
               }
-            }
+            },
+            take: 20 // Limit hooks per meeting
           }
         },
         orderBy: {
           createdAt: 'desc'
-        }
+        },
+        take: 25 // Limit initial meetings load
       });
     }
 

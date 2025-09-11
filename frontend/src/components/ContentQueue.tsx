@@ -7,68 +7,52 @@ import { PostCard } from "./PostCard"
 import { MeetingCard } from "./MeetingCard"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs"
 import { Button } from "./ui/button"
-import { contentApi, handleApiError, type ContentPost } from "../services/api"
-import { useMeetings, useReprocessMeeting, useDeleteMeeting, useInvalidateMeetings } from "../hooks/useContent"
+import { handleApiError, type ContentPost } from "../services/api"
+import { useDashboardData, useReprocessMeeting, useDeleteMeeting, useInvalidateDashboard, useUpdatePostStatus, useUpdatePostContent, useRewritePostContent } from "../hooks/useContent"
 import { RewriteModal } from "./modals/RewriteModal"
 import { PostViewModal } from "./modals/PostViewModal"
 
 export function ContentQueue() {
-  const [posts, setPosts] = useState<ContentPost[]>([])
-  const [isLoading, setIsLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState("")
   const [activeTab, setActiveTab] = useState("meetings")
-  const [error, setError] = useState<string | null>(null)
   const [rewriteModal, setRewriteModal] = useState<{ isOpen: boolean; postId?: string; content?: string }>({ 
     isOpen: false 
   })
   const [viewModal, setViewModal] = useState<{ isOpen: boolean; post?: ContentPost }>({ 
     isOpen: false 
   })
-  const [loadingStates, setLoadingStates] = useState<Record<string, boolean>>({})
 
-  // Use React Query for meetings
-  const { data: meetings = [], isLoading: meetingsLoading, error: meetingsError } = useMeetings()
+  // Use optimized dashboard data for better performance
+  const { data: dashboardData, isLoading: dashboardLoading, error: dashboardError } = useDashboardData()
+  const posts = dashboardData?.posts || []
+  const meetings = dashboardData?.meetings || []
   const reprocessMeetingMutation = useReprocessMeeting()
   const deleteMeetingMutation = useDeleteMeeting()
-  const { refetchMeetings: manualRefetchMeetings } = useInvalidateMeetings()
+  const { refetchDashboard: manualRefetchDashboard } = useInvalidateDashboard()
+  
+  // Optimized mutations
+  const updatePostStatusMutation = useUpdatePostStatus()
+  const updatePostContentMutation = useUpdatePostContent()
+  const rewritePostContentMutation = useRewritePostContent()
 
-  // Load posts from API (keeping existing implementation for now)
-  useEffect(() => {
-    loadPosts()
-  }, [])
+  const isLoading = dashboardLoading
+  const error = dashboardError ? handleApiError(dashboardError).message : null
 
-  const loadPosts = async () => {
-    try {
-      setIsLoading(true)
-      setError(null)
-      const queuePosts = await contentApi.getQueue()
-      setPosts(queuePosts)
-    } catch (err) {
-      const apiError = handleApiError(err)
-      setError(apiError.message)
-    } finally {
-      setIsLoading(false)
-    }
-  }
+  // Remove manual data loading since we use React Query now
 
-  // Handle meetings error from React Query
-  useEffect(() => {
-    if (meetingsError) {
-      const apiError = handleApiError(meetingsError)
-      setError(apiError.message)
-    }
-  }, [meetingsError])
-
+  // Import dashboard invalidation
+  const { invalidateDashboard } = useInvalidateDashboard()
+  
   // Add focus listener for manual refresh when user returns to tab
   useEffect(() => {
     const handleFocus = () => {
-      // Refresh meetings data when user focuses on the window
-      manualRefetchMeetings()
+      // Refresh dashboard data when user focuses on the window
+      invalidateDashboard()
     }
 
     window.addEventListener('focus', handleFocus)
     return () => window.removeEventListener('focus', handleFocus)
-  }, [manualRefetchMeetings])
+  }, [invalidateDashboard])
 
   const handleRewrite = (postId: string) => {
     const post = posts.find(p => p.id === postId)
@@ -87,24 +71,23 @@ export function ContentQueue() {
 
   const handleRewriteSubmit = async (instructions: string): Promise<string> => {
     if (!rewriteModal.postId) throw new Error("No post selected")
-    return await contentApi.rewriteContent(rewriteModal.postId, instructions)
+    return await rewritePostContentMutation.mutateAsync({
+      postId: rewriteModal.postId,
+      instructions
+    })
   }
 
   const handleRewriteAccept = async (rewrittenContent: string) => {
     if (!rewriteModal.postId) return
     
     try {
-      setLoadingStates(prev => ({ ...prev, [`rewrite-${rewriteModal.postId}`]: true }))
-      
-      const updatedPost = await contentApi.updateContent(rewriteModal.postId, rewrittenContent)
-      setPosts(posts.map(post => 
-        post.id === rewriteModal.postId ? updatedPost : post
-      ))
+      await updatePostContentMutation.mutateAsync({
+        postId: rewriteModal.postId,
+        content: rewrittenContent
+      })
     } catch (err) {
       const apiError = handleApiError(err)
-      setError(apiError.message)
-    } finally {
-      setLoadingStates(prev => ({ ...prev, [`rewrite-${rewriteModal.postId}`]: false }))
+      console.error('Failed to update content:', apiError.message)
     }
   }
 
@@ -123,83 +106,31 @@ export function ContentQueue() {
   }
 
   const handleApprove = async (postId: string) => {
-    // Optimistic update - instantly update UI
     const tomorrow = new Date()
     tomorrow.setDate(tomorrow.getDate() + 1)
     tomorrow.setHours(9, 0, 0, 0)
     
-    const originalPost = posts.find(p => p.id === postId)
-    const optimisticPost = originalPost ? {
-      ...originalPost,
-      status: "SCHEDULED" as const,
-      scheduledFor: tomorrow.toISOString()
-    } : null
-    
-    if (optimisticPost) {
-      setPosts(posts.map(post => 
-        post.id === postId ? optimisticPost : post
-      ))
-    }
-    
     try {
-      setLoadingStates(prev => ({ ...prev, [`approve-${postId}`]: true }))
-      
-      // Make API call in background
-      const updatedPost = await contentApi.updateStatus(postId, "SCHEDULED", tomorrow.toISOString())
-      
-      // Update with server response (in case of any differences)
-      setPosts(posts.map(post => 
-        post.id === postId ? updatedPost : post
-      ))
+      await updatePostStatusMutation.mutateAsync({
+        postId,
+        status: "SCHEDULED",
+        scheduledFor: tomorrow.toISOString()
+      })
     } catch (err) {
-      // Revert optimistic update on error
-      if (originalPost) {
-        setPosts(posts.map(post => 
-          post.id === postId ? originalPost : post
-        ))
-      }
       const apiError = handleApiError(err)
-      setError(apiError.message)
-    } finally {
-      setLoadingStates(prev => ({ ...prev, [`approve-${postId}`]: false }))
+      console.error('Failed to approve post:', apiError.message)
     }
   }
 
   const handleReject = async (postId: string) => {
-    // Optimistic update - instantly update UI
-    const originalPost = posts.find(p => p.id === postId)
-    const optimisticPost = originalPost ? {
-      ...originalPost,
-      status: "REJECTED" as const
-    } : null
-    
-    if (optimisticPost) {
-      setPosts(posts.map(post => 
-        post.id === postId ? optimisticPost : post
-      ))
-    }
-    
     try {
-      setLoadingStates(prev => ({ ...prev, [`reject-${postId}`]: true }))
-      
-      // Make API call in background
-      const updatedPost = await contentApi.updateStatus(postId, "REJECTED")
-      
-      // Update with server response (in case of any differences)
-      setPosts(posts.map(post => 
-        post.id === postId ? updatedPost : post
-      ))
+      await updatePostStatusMutation.mutateAsync({
+        postId,
+        status: "REJECTED"
+      })
     } catch (err) {
-      // Revert optimistic update on error
-      if (originalPost) {
-        setPosts(posts.map(post => 
-          post.id === postId ? originalPost : post
-        ))
-      }
       const apiError = handleApiError(err)
-      setError(apiError.message)
-    } finally {
-      setLoadingStates(prev => ({ ...prev, [`reject-${postId}`]: false }))
+      console.error('Failed to reject post:', apiError.message)
     }
   }
 
@@ -211,14 +142,10 @@ export function ContentQueue() {
   const handleReprocess = async (meetingId: string) => {
     try {
       await reprocessMeetingMutation.mutateAsync(meetingId)
-      // Also reload posts as new ones will be generated
-      setTimeout(() => {
-        loadPosts()
-      }, 2000)
+      // Posts will be reloaded automatically via React Query invalidation
       console.log("✅ Meeting reprocessing started")
     } catch (err) {
       const apiError = handleApiError(err)
-      setError(apiError.message)
       console.error("❌ Failed to reprocess meeting:", apiError.message)
     }
   }
@@ -234,7 +161,6 @@ export function ContentQueue() {
       console.log("✅ Meeting deleted successfully")
     } catch (err) {
       const apiError = handleApiError(err)
-      setError(apiError.message)
       console.error("❌ Failed to delete meeting:", apiError.message)
     }
   }
@@ -284,16 +210,9 @@ export function ContentQueue() {
               <Button 
                 variant="outline" 
                 size="sm" 
-                onClick={loadPosts}
+                onClick={() => manualRefetchDashboard()}
               >
-                Retry Posts
-              </Button>
-              <Button 
-                variant="outline" 
-                size="sm" 
-                onClick={() => manualRefetchMeetings()}
-              >
-                Retry Meetings
+                Retry Data
               </Button>
             </div>
           </div>
@@ -401,11 +320,11 @@ export function ContentQueue() {
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => manualRefetchMeetings()}
-                  disabled={meetingsLoading}
+                  onClick={() => manualRefetchDashboard()}
+                  disabled={dashboardLoading}
                   className="flex items-center gap-2"
                 >
-                  <RefreshCw className={`h-4 w-4 ${meetingsLoading ? 'animate-spin' : ''}`} />
+                  <RefreshCw className={`h-4 w-4 ${dashboardLoading ? 'animate-spin' : ''}`} />
                   Refresh
                 </Button>
               </div>
@@ -416,10 +335,10 @@ export function ContentQueue() {
                 <Button 
                   variant="outline" 
                   size="sm" 
-                  onClick={() => manualRefetchMeetings()}
-                  disabled={meetingsLoading}
+                  onClick={() => manualRefetchDashboard()}
+                  disabled={dashboardLoading}
                 >
-                  {meetingsLoading ? "Loading..." : "Refresh Meetings"}
+                  {dashboardLoading ? "Loading..." : "Refresh Data"}
                 </Button>
               </div>
             </div>
@@ -476,7 +395,7 @@ export function ContentQueue() {
                   onReject={handleReject}
                   onSchedule={handleSchedule}
                   onView={handleView}
-                  loadingStates={loadingStates}
+                  loadingStates={{}}
                 />
               ))}
             </div>
@@ -510,7 +429,7 @@ export function ContentQueue() {
                     onReject={handleReject}
                     onSchedule={handleSchedule}
                     onView={handleView}
-                    loadingStates={loadingStates}
+                    loadingStates={{}}
                   />
                 ))}
               </div>
@@ -545,7 +464,7 @@ export function ContentQueue() {
                     onReject={handleReject}
                     onSchedule={handleSchedule}
                     onView={handleView}
-                    loadingStates={loadingStates}
+                    loadingStates={{}}
                   />
                 ))}
               </div>

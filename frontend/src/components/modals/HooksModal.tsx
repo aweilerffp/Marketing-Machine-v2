@@ -103,7 +103,7 @@ export function HooksModal({ isOpen, onClose, hooks, meetingTitle }: HooksModalP
                         {hook.posts.map((post) => (
                           <div key={post.id} className="flex items-start justify-between p-2 bg-white border border-gray-100 rounded">
                             <p className="text-xs text-gray-600 flex-1 mr-2 line-clamp-2">
-                              {post.content.substring(0, 100)}...
+                              {post.content ? post.content.substring(0, 100) + '...' : 'No content available'}
                             </p>
                             <Badge className={`${getStatusColor(post.status)} text-xs border-0`}>
                               {post.status}

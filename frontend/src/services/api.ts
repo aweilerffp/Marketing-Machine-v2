@@ -81,11 +81,60 @@ export interface Meeting {
 }
 
 // API Service Functions
+export interface PaginatedResponse<T> {
+  posts: T[];
+  pagination: {
+    currentPage: number;
+    totalPages: number;
+    totalCount: number;
+    hasNextPage: boolean;
+    hasPrevPage: boolean;
+    limit: number;
+  };
+}
+
+export interface DashboardData {
+  posts: ContentPost[];
+  meetings: Meeting[];
+  stats: {
+    totalMeetings: number;
+    pendingPosts: number;
+    scheduledPosts: number;
+    rejectedPosts: number;
+    totalPosts: number;
+  };
+  timestamp: string;
+}
+
 export const contentApi = {
-  // Get pending posts for approval queue
-  getQueue: async (): Promise<ContentPost[]> => {
-    const response = await api.get('/api/content/queue');
+  // Get consolidated dashboard data (posts + meetings + stats)
+  getDashboard: async (params?: { limit?: number }): Promise<DashboardData> => {
+    const searchParams = new URLSearchParams();
+    if (params?.limit) searchParams.set('limit', params.limit.toString());
+    
+    const response = await api.get(`/api/content/dashboard?${searchParams.toString()}`);
     return response.data;
+  },
+
+  // Get pending posts for approval queue with pagination
+  getQueue: async (params?: {
+    page?: number;
+    limit?: number;
+    status?: 'PENDING' | 'APPROVED' | 'SCHEDULED' | 'PUBLISHED' | 'REJECTED';
+  }): Promise<PaginatedResponse<ContentPost>> => {
+    const searchParams = new URLSearchParams();
+    if (params?.page) searchParams.set('page', params.page.toString());
+    if (params?.limit) searchParams.set('limit', params.limit.toString());
+    if (params?.status) searchParams.set('status', params.status);
+    
+    const response = await api.get(`/api/content/queue?${searchParams.toString()}`);
+    return response.data;
+  },
+
+  // Get all posts without pagination (backward compatibility)
+  getQueueLegacy: async (): Promise<ContentPost[]> => {
+    const response = await api.get('/api/content/queue?limit=1000');
+    return response.data.posts || response.data;
   },
 
   // Update post status (approve/reject)

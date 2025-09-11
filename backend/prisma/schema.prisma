@@ -49,6 +49,11 @@ model Meeting {
   processedStatus ProcessedStatus @default(PENDING)
   processedAt     DateTime?
   createdAt       DateTime       @default(now())
+
+  @@index([companyId])
+  @@index([processedStatus])
+  @@index([createdAt])
+  @@index([companyId, processedStatus])
 }
 
 model ContentHook {
@@ -59,6 +64,10 @@ model ContentHook {
   pillar      String?       // Which content pillar this belongs to
   posts       ContentPost[]
   createdAt   DateTime      @default(now())
+
+  @@index([meetingId])
+  @@index([pillar])
+  @@index([createdAt])
 }
 
 model ContentPost {
@@ -75,6 +84,13 @@ model ContentPost {
   editHistory    Json?       // Track content edits
   createdAt      DateTime    @default(now())
   updatedAt      DateTime    @updatedAt
+
+  @@index([hookId])
+  @@index([status])
+  @@index([createdAt])
+  @@index([scheduledFor])
+  @@index([hookId, status])
+  @@index([status, createdAt])
 }
 
 enum PostStatus {
