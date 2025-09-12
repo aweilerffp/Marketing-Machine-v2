@@ -122,8 +122,8 @@ Generate between 3-10 insights, ordered by confidence/relevance.
           content: hookGenerationPrompt
         }
       ],
-      temperature: parseFloat(process.env.OPENAI_TEMPERATURE) || 0.7,
-      max_tokens: parseInt(process.env.OPENAI_MAX_TOKENS) || 2000, // Configurable via env
+      temperature: parseFloat(process.env.OPENAI_TEMPERATURE) || 1.0,
+      max_completion_tokens: parseInt(process.env.OPENAI_MAX_TOKENS) || 2000, // Configurable via env
       response_format: { type: "json_object" }
     });
 
@@ -201,8 +201,8 @@ ${JSON.stringify(brandVoice, null, 2)}
           content: postGenerationPrompt
         }
       ],
-      temperature: 0.8,
-      max_tokens: 500
+      temperature: parseFloat(process.env.OPENAI_TEMPERATURE) || 1.0,
+      max_completion_tokens: 500
     });
 
     const generatedPost = completion.choices[0].message.content.trim();

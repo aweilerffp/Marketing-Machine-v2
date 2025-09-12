@@ -56,8 +56,8 @@ Return JSON with:
         { role: 'system', content: 'You are a brand analyst that identifies company industries and target audiences from website content. Always respond with valid JSON.' },
         { role: 'user', content: prompt }
       ],
-      max_tokens: 800,
-      temperature: 0.3
+      max_completion_tokens: 800,
+      temperature: parseFloat(process.env.OPENAI_TEMPERATURE) || 1.0
     });
 
     const response = completion.choices[0]?.message?.content || '{}';
@@ -218,8 +218,8 @@ Return the complete customized prompt ready to use for LinkedIn post generation.
         { role: 'system', content: 'You are a prompt engineering expert that customizes content generation prompts for specific companies. Return the complete customized prompt.' },
         { role: 'user', content: metaPrompt }
       ],
-      max_tokens: 2000,
-      temperature: 0.3
+      max_completion_tokens: 2000,
+      temperature: parseFloat(process.env.OPENAI_TEMPERATURE) || 1.0
     });
 
     const customPrompt = completion.choices[0]?.message?.content || getBasicPromptTemplate();

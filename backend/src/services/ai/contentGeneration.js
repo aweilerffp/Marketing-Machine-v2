@@ -23,22 +23,28 @@ export async function generateContentHooks(transcript, brandVoiceData, contentPi
   }
 
   try {
-    const prompt = `
-You are a LinkedIn content strategist for ${brandVoiceData.industry || 'technology'} companies.
+    // Use sophisticated brand voice processing
+    const processedBrandVoice = processBrandVoice(brandVoiceData);
+    const brandContext = formatBrandVoiceForPrompt(processedBrandVoice, 'context');
 
-Company Context:
-- Industry: ${brandVoiceData.industry || 'Technology'}
-- Target Audience: ${brandVoiceData.targetAudience || 'Business professionals'}
-- Brand Voice: Professional, helpful, and authoritative
+    const prompt = `
+You are a senior LinkedIn content strategist specializing in ${processedBrandVoice.industry} companies.
+
+${brandContext}
 
 Meeting Transcript:
 ${transcript}
 
-Extract 3-5 key content hooks from this meeting that would make engaging LinkedIn posts. Each hook should be:
-1. Actionable and valuable to the target audience
-2. Specific and concrete (include numbers, examples, or specific problems/solutions)
-3. Aligned with the company's expertise and brand voice
-4. Written as a complete thought or insight
+Based on ${processedBrandVoice.companyName}'s expertise in ${processedBrandVoice.industry}, extract 3-5 content hooks that would make engaging LinkedIn posts for ${processedBrandVoice.targetAudience}.
+
+Focus on insights that address these specific pain points: ${processedBrandVoice.painPoints.join(', ')}.
+
+Each hook should:
+1. Be actionable and valuable to ${processedBrandVoice.targetAudience}
+2. Include specific numbers, examples, or concrete problems/solutions from the meeting
+3. Use these industry keywords naturally: ${processedBrandVoice.keywords.slice(0, 5).join(', ')}
+4. Match ${processedBrandVoice.companyName}'s tone: ${processedBrandVoice.tone}
+5. Be written as a complete thought that only ${processedBrandVoice.companyName} would know from their ${processedBrandVoice.industry} experience
 
 Format: Return only the hooks, one per line, without numbering or bullets.
 `;
@@ -49,8 +55,8 @@ Format: Return only the hooks, one per line, without numbering or bullets.
         { role: 'system', content: 'You are a LinkedIn content strategist that extracts valuable content hooks from meeting transcripts.' },
         { role: 'user', content: prompt }
       ],
-      max_tokens: 1000,
-      temperature: 0.7
+      max_completion_tokens: 1000,
+      temperature: parseFloat(process.env.OPENAI_TEMPERATURE) || 1.0
     });
 
     const response = completion.choices[0]?.message?.content || '';
@@ -81,27 +87,26 @@ export async function generateLinkedInPost(hook, brandVoiceData, contentPillars 
   }
 
   try {
-    const prompt = `
-Create a LinkedIn post for a ${brandVoiceData.industry || 'technology'} company.
+    // Use sophisticated brand voice processing
+    const processedBrandVoice = processBrandVoice(brandVoiceData);
+    const brandContext = formatBrandVoiceForPrompt(processedBrandVoice, 'context');
 
-Company Context:
-- Industry: ${brandVoiceData.industry || 'Technology'}
-- Target Audience: ${brandVoiceData.targetAudience || 'Business professionals'}
-- Brand Voice: Professional, helpful, and authoritative
+    const prompt = `
+Create a LinkedIn post for ${processedBrandVoice.companyName}, a ${processedBrandVoice.industry} company.
+
+${brandContext}
 
 Content Hook:
 ${hook}
 
-Website Content Context (for tone reference):
-${brandVoiceData.websiteContent ? brandVoiceData.websiteContent.substring(0, 500) + '...' : 'Professional technology company content'}
-
 Create a LinkedIn post that:
-1. Opens with a compelling hook that grabs attention
-2. Provides valuable insight or actionable advice
-3. Uses a conversational but professional tone
-4. Includes a call-to-action or thought-provoking question
-5. Is optimized for LinkedIn engagement (150-300 words)
-6. Matches the brand's voice and target audience
+1. Opens with a compelling hook that grabs attention from ${processedBrandVoice.targetAudience}
+2. Addresses specific ${processedBrandVoice.industry} pain points: ${processedBrandVoice.painPoints.slice(0, 3).join(', ')}
+3. Uses ${processedBrandVoice.companyName}'s tone: ${processedBrandVoice.tone}
+4. Incorporates these industry keywords naturally: ${processedBrandVoice.keywords.slice(0, 4).join(', ')}
+5. Includes a call-to-action or thought-provoking question relevant to ${processedBrandVoice.targetAudience}
+6. Is optimized for LinkedIn engagement (150-300 words)
+7. Sounds like it could only come from ${processedBrandVoice.companyName} based on their expertise
 
 Format your response as JSON:
 {
@@ -116,8 +121,8 @@ Format your response as JSON:
         { role: 'system', content: 'You are a LinkedIn content creator that writes engaging posts for business professionals. Always respond with valid JSON.' },
         { role: 'user', content: prompt }
       ],
-      max_tokens: 800,
-      temperature: 0.7
+      max_completion_tokens: 800,
+      temperature: parseFloat(process.env.OPENAI_TEMPERATURE) || 1.0
     });
 
     const response = completion.choices[0]?.message?.content || '';
@@ -228,8 +233,8 @@ Return only the rewritten content, no explanations or additional text.
         { role: 'system', content: 'You are a LinkedIn content editor that rewrites posts based on specific instructions while maintaining brand voice.' },
         { role: 'user', content: prompt }
       ],
-      max_tokens: 1000,
-      temperature: 0.7
+      max_completion_tokens: 1000,
+      temperature: parseFloat(process.env.OPENAI_TEMPERATURE) || 1.0
     });
 
     const rewrittenContent = completion.choices[0].message.content.trim();
@@ -259,7 +264,13 @@ export async function generateEnhancedLinkedInPost(hookText, pillar, brandVoiceD
 
   try {
     // Process brand voice using unified processor
-    console.log('🔍 Debug: generateEnhancedLinkedInPost called with:', { hookText, pillar, brandVoiceData: typeof brandVoiceData, meetingSummary: typeof meetingSummary, hookContext: !!hookContext, companyId });
+    console.log('🔍 DEBUG: generateEnhancedLinkedInPost called with:');
+    console.log('  - hookText:', hookText?.substring(0, 100));
+    console.log('  - pillar:', pillar);
+    console.log('  - brandVoiceData type:', typeof brandVoiceData);
+    console.log('  - brandVoiceData keys:', Object.keys(brandVoiceData || {}));
+    console.log('  - companyId:', companyId);
+    console.log('  - brandVoiceData sample:', JSON.stringify(brandVoiceData)?.substring(0, 200));
     
     let prompt;
     
@@ -268,13 +279,15 @@ export async function generateEnhancedLinkedInPost(hookText, pillar, brandVoiceD
       try {
         console.log(`🎯 Attempting to use custom prompt for company: ${companyId}`);
         prompt = await getCustomLinkedInPrompt(companyId);
-        console.log(`✨ Using custom LinkedIn prompt for company: ${companyId}`);
+        console.log(`✨ SUCCESS: Using custom LinkedIn prompt for company: ${companyId}`);
+        console.log(`📏 Custom prompt length: ${prompt?.length || 0} characters`);
       } catch (error) {
-        console.warn(`⚠️ Failed to get custom prompt for company ${companyId}, falling back to generic:`, error.message);
+        console.error(`❌ FAILED to get custom prompt for company ${companyId}:`, error.message);
         prompt = getGenericLinkedInPrompt();
+        console.log(`📝 FALLBACK: Using generic prompt instead`);
       }
     } else {
-      console.log('📝 No company ID provided, using generic prompt');
+      console.log('⚠️ No company ID provided, using generic prompt');
       prompt = getGenericLinkedInPrompt(); 
     }
 
@@ -356,8 +369,8 @@ Return clean JSON:
         },
         { role: 'user', content: prompt }
       ],
-      max_tokens: 1500,
-      temperature: 0.7
+      max_completion_tokens: 1500,
+      temperature: parseFloat(process.env.OPENAI_TEMPERATURE) || 1.0
     });
 
     const response = completion.choices[0]?.message?.content || '';
