@@ -1,10 +1,10 @@
-import OpenAI from 'openai';
+import Anthropic from '@anthropic-ai/sdk';
 import prisma from '../../models/prisma.js';
 import { processBrandVoice } from './brandVoiceProcessor.js';
 
-// Initialize OpenAI client
-const openai = process.env.OPENAI_API_KEY ? new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
+// Initialize Anthropic client
+const anthropic = process.env.ANTHROPIC_API_KEY ? new Anthropic({
+  apiKey: process.env.ANTHROPIC_API_KEY,
 }) : null;
 
 /**
@@ -13,9 +13,9 @@ const openai = process.env.OPENAI_API_KEY ? new OpenAI({
  * @returns {Promise<object>} Enhanced brand data with detected industry/ICP
  */
 export async function autoDetectIndustryAndICP(brandVoiceData) {
-  // If no OpenAI key, return basic processed data
-  if (!openai || !process.env.OPENAI_API_KEY || process.env.OPENAI_API_KEY === 'your_openai_api_key_here') {
-    console.log('🤖 Using basic industry/ICP detection - no OpenAI key configured');
+  // If no Anthropic key, return basic processed data
+  if (!anthropic || !process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_API_KEY === 'your_anthropic_api_key_here') {
+    console.log('🤖 Using basic industry/ICP detection - no Anthropic key configured');
     return getBasicIndustryICP(brandVoiceData);
   }
 
@@ -50,17 +50,16 @@ Return JSON with:
 }
 `;
 
-    const completion = await openai.chat.completions.create({
-      model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
+    const completion = await anthropic.messages.create({
+      model: process.env.CLAUDE_MODEL || 'claude-3-7-sonnet-latest',
+      max_tokens: 800,
+      temperature: parseFloat(process.env.CLAUDE_TEMPERATURE) || 0.7,
       messages: [
-        { role: 'system', content: 'You are a brand analyst that identifies company industries and target audiences from website content. Always respond with valid JSON.' },
-        { role: 'user', content: prompt }
-      ],
-      max_completion_tokens: 800,
-      temperature: parseFloat(process.env.OPENAI_TEMPERATURE) || 1.0
+        { role: 'user', content: `You are a brand analyst that identifies company industries and target audiences from website content. Always respond with valid JSON.\n\n${prompt}` }
+      ]
     });
 
-    const response = completion.choices[0]?.message?.content || '{}';
+    const response = completion.content[0]?.text || '{}';
     
     try {
       const detectedData = JSON.parse(response);
@@ -91,9 +90,9 @@ Return JSON with:
  * @returns {Promise<string>} Custom LinkedIn prompt
  */
 export async function generateCustomLinkedInPrompt(companyId) {
-  // If no OpenAI key, return basic template
-  if (!openai || !process.env.OPENAI_API_KEY || process.env.OPENAI_API_KEY === 'your_openai_api_key_here') {
-    console.log('🤖 Using basic prompt template - no OpenAI key configured');
+  // If no Anthropic key, return basic template
+  if (!anthropic || !process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_API_KEY === 'your_anthropic_api_key_here') {
+    console.log('🤖 Using basic prompt template - no Anthropic key configured');
     return getBasicPromptTemplate();
   }
 
@@ -212,17 +211,16 @@ INSTRUCTIONS:
 Return the complete customized prompt ready to use for LinkedIn post generation.
 `;
 
-    const completion = await openai.chat.completions.create({
-      model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
+    const completion = await anthropic.messages.create({
+      model: process.env.CLAUDE_MODEL || 'claude-3-7-sonnet-latest',
+      max_tokens: 2000,
+      temperature: parseFloat(process.env.CLAUDE_TEMPERATURE) || 0.7,
       messages: [
-        { role: 'system', content: 'You are a prompt engineering expert that customizes content generation prompts for specific companies. Return the complete customized prompt.' },
-        { role: 'user', content: metaPrompt }
-      ],
-      max_completion_tokens: 2000,
-      temperature: parseFloat(process.env.OPENAI_TEMPERATURE) || 1.0
+        { role: 'user', content: `You are a prompt engineering expert that customizes content generation prompts for specific companies. Return the complete customized prompt.\n\n${metaPrompt}` }
+      ]
     });
 
-    const customPrompt = completion.choices[0]?.message?.content || getBasicPromptTemplate();
+    const customPrompt = completion.content[0]?.text || getBasicPromptTemplate();
     
     // Store the custom prompt in the database
     await prisma.company.update({

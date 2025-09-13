@@ -82,13 +82,27 @@ function generateIndustryKeywords(industry) {
   const keywordMap = {
     'E-commerce': ['marketplace', 'product listings', 'inventory management', 'conversion rates', 'cart abandonment', 'checkout optimization'],
     'Amazon Selling': ['listing management', 'catalog optimization', 'bulk editing', 'Amazon variations', 'Seller Central', 'flat files', 'ASIN management', 'brand registry', 'listing errors', 'catalog health'],
+    'amazon selling, marketing agency': ['Amazon PPC', 'listing optimization', 'Amazon growth', 'seller management', 'Amazon advertising', 'conversion rates', 'TikTok marketing', 'D2C brands', 'marketplace growth'],
     'SaaS': ['user onboarding', 'feature adoption', 'churn reduction', 'product-market fit', 'customer success', 'API integration'],
     'Marketing': ['lead generation', 'conversion optimization', 'customer acquisition', 'brand awareness', 'content strategy', 'performance metrics'],
     'Technology': ['automation', 'scalability', 'integration', 'workflow optimization', 'digital transformation', 'efficiency gains'],
     'General Business': ['operational efficiency', 'growth strategies', 'customer experience', 'business optimization', 'competitive advantage', 'market positioning']
   };
   
-  return keywordMap[industry] || keywordMap['General Business'];
+  // Try exact match first, then fallback to partial matches
+  if (keywordMap[industry]) {
+    return keywordMap[industry];
+  }
+  
+  // Check for partial matches
+  if (industry?.toLowerCase().includes('amazon')) {
+    return keywordMap['amazon selling, marketing agency'];
+  }
+  if (industry?.toLowerCase().includes('marketing')) {
+    return keywordMap['Marketing'];
+  }
+  
+  return keywordMap['General Business'];
 }
 
 /**
@@ -100,13 +114,27 @@ function generateIndustryPainPoints(industry) {
   const painPointMap = {
     'E-commerce': ['cart abandonment', 'inventory tracking', 'product discovery', 'conversion rates', 'customer retention'],
     'Amazon Selling': ['listing errors', 'catalog inconsistencies', 'bulk operations', 'variation management', 'compliance issues'],
+    'amazon selling, marketing agency': ['Amazon advertising complexity', 'low conversion rates', 'high ACoS', 'poor listing performance', 'marketplace competition', 'inconsistent growth'],
     'SaaS': ['user adoption', 'feature complexity', 'onboarding friction', 'integration challenges', 'churn risk'],
     'Marketing': ['lead quality', 'attribution tracking', 'campaign performance', 'audience targeting', 'ROI measurement'],
     'Technology': ['system integration', 'process automation', 'data silos', 'workflow bottlenecks', 'scalability concerns'],
     'General Business': ['operational inefficiencies', 'growth bottlenecks', 'customer satisfaction', 'competitive pressure', 'resource allocation']
   };
   
-  return painPointMap[industry] || painPointMap['General Business'];
+  // Try exact match first, then fallback to partial matches
+  if (painPointMap[industry]) {
+    return painPointMap[industry];
+  }
+  
+  // Check for partial matches
+  if (industry?.toLowerCase().includes('amazon')) {
+    return painPointMap['amazon selling, marketing agency'];
+  }
+  if (industry?.toLowerCase().includes('marketing')) {
+    return painPointMap['Marketing'];
+  }
+  
+  return painPointMap['General Business'];
 }
 
 /**

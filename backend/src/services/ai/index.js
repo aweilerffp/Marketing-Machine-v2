@@ -1,8 +1,8 @@
-import OpenAI from 'openai';
+import Anthropic from '@anthropic-ai/sdk';
 import { processBrandVoice, formatBrandVoiceForPrompt } from './brandVoiceProcessor.js';
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
+const anthropic = new Anthropic({
+  apiKey: process.env.ANTHROPIC_API_KEY,
 });
 
 // Helper function to generate industry-specific keywords
@@ -35,7 +35,7 @@ const generateIndustryPainPoints = (industry, targetAudience) => {
 
 export const generateHooks = async (transcript, brandVoice, contentPillars, meetingMetadata = {}) => {
   try {
-    console.log('🤖 Generating marketing hooks with OpenAI');
+    console.log('🤖 Generating marketing hooks with Claude 3.7 Sonnet');
     
     // Process brand voice using unified processor
     const processedBrandVoice = processBrandVoice(brandVoice);
@@ -52,8 +52,10 @@ export const generateHooks = async (transcript, brandVoice, contentPillars, meet
     const hookGenerationPrompt = `
 ROLE: You are ${processedBrandVoice.companyName}'s senior content strategist.
 
-### Brand Voice Context
-${formatBrandVoiceForPrompt(processedBrandVoice, 'structured')}
+### Brand Voice (EXCERPT – keep it tight)
+- Tone: ${processedBrandVoice.tone}
+- Keywords to weave in when relevant: ${processedBrandVoice.keywords.join(', ')}
+- Never use buzzwords like "synergy," "paradigm," or "disrupt."
 
 ### Content Pillars & Priority (ranked)
 ${contentPillars.map((pillar, index) => `${index + 1}. ${pillar}`).join('\n')}
@@ -64,7 +66,7 @@ ${contentPillars.map((pillar, index) => `${index + 1}. ${pillar}`).join('\n')}
 - Type: ${meetingType}
 - Goal: ${meetingGoal}
 
-**Five High-Leverage Questions to Ask Yourself First:**
+Five High-Leverage Questions to Ask Yourself (or the Stakeholder) First
 "What single insight do we most want the reader to remember?"
 "Which ${processedBrandVoice.targetAudience} persona is priority #1 for this piece?"
 "What emotion should the reader feel—relief, confidence, urgency?"
@@ -86,86 +88,76 @@ ${transcript}
    *→ Each deliverable must explicitly reference ${processedBrandVoice.industry} context OR address specific pain points: ${processedBrandVoice.painPoints.join(', ')}.*  
 
 3. Output as structured JSON:
+\`\`\`json
 {
   "insights": [
     {
       "pillar": "exact pillar name from list above",
       "source_quote": "exact quote from transcript that inspired this",
-      "blog": { 
-        "title": "compelling blog post title", 
-        "hook": "25-word compelling hook" 
-      },
+      "blog": { "title": "compelling blog post title", "hook": "25-word compelling hook" },
       "linkedin": "LinkedIn post content ending with question",
-      "tweet": "Twitter-optimized content with max 1 hashtag",
-      "confidence": 0.85,
-      "reasoning": "why this insight is valuable to ${processedBrandVoice.targetAudience}"
+      "tweet": "Twitter-optimized content with max 1 hashtag"
     }
   ]
 }
-
-Generate between 3-10 insights, ordered by confidence/relevance.
+\`\`\`
 `;
 
     // Calculate estimated token usage for monitoring
     const estimatedTokens = Math.ceil(hookGenerationPrompt.length / 4); // Rough estimate: 4 chars per token
     console.log(`📊 Estimated input tokens: ~${estimatedTokens}`);
     
-    const completion = await openai.chat.completions.create({
-      model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
+    const completion = await anthropic.messages.create({
+      model: process.env.CLAUDE_MODEL || 'claude-3-7-sonnet-latest',
+      max_tokens: parseInt(process.env.CLAUDE_MAX_TOKENS) || 20000,
+      temperature: parseFloat(process.env.CLAUDE_TEMPERATURE) || 0.7,
       messages: [
         {
-          role: 'system',
-          content: 'You are an expert marketing strategist who extracts valuable insights from business conversations and transforms them into compelling platform-agnostic content hooks.'
-        },
-        {
           role: 'user',
-          content: hookGenerationPrompt
+          content: `You are an expert marketing strategist who extracts valuable insights from business conversations and transforms them into compelling platform-agnostic content hooks.\n\n${hookGenerationPrompt}\n\nIMPORTANT: Respond with valid JSON only, no additional text.`
         }
-      ],
-      temperature: parseFloat(process.env.OPENAI_TEMPERATURE) || 1.0,
-      max_completion_tokens: parseInt(process.env.OPENAI_MAX_TOKENS) || 2000, // Configurable via env
-      response_format: { type: "json_object" }
+      ]
     });
 
     // Log actual token usage for monitoring
     const usage = completion.usage;
     if (usage) {
-      console.log(`📊 Token usage - Input: ${usage.prompt_tokens}, Output: ${usage.completion_tokens}, Total: ${usage.total_tokens}`);
-      console.log(`💰 Estimated cost: $${((usage.prompt_tokens * 0.15 + usage.completion_tokens * 0.6) / 1000000).toFixed(6)}`);
+      console.log(`📊 Token usage - Input: ${usage.input_tokens}, Output: ${usage.output_tokens}`);
+      console.log(`💰 Estimated cost: $${((usage.input_tokens * 3 + usage.output_tokens * 15) / 1000000).toFixed(6)}`);
     }
 
-    const response = JSON.parse(completion.choices[0].message.content);
+    // Handle Claude's markdown-wrapped JSON responses
+    let responseText = completion.content[0].text.trim();
+    console.log(`🔍 Raw Claude response (first 200 chars): ${responseText.substring(0, 200)}`);
+    
+    // More robust markdown parsing
+    if (responseText.includes('```')) {
+      // Extract everything between first ``` and last ```
+      const match = responseText.match(/```(?:json)?\s*\n?([\s\S]*?)```/);
+      if (match) {
+        responseText = match[1].trim();
+      } else {
+        // Fallback: just remove all ``` lines
+        responseText = responseText.replace(/^```[a-z]*\s*\n?/i, '').replace(/\n?```\s*$/i, '');
+      }
+    }
+    
+    console.log(`🔍 Cleaned response (first 200 chars): ${responseText.substring(0, 200)}`);
+    const response = JSON.parse(responseText);
     
     console.log(`✅ Generated ${response.hooks?.length || 0} marketing hooks`);
     return response;
 
   } catch (error) {
     console.error('❌ Hook generation error:', error);
+    console.error('🔍 Full error details:', {
+      message: error.message,
+      status: error.status,
+      type: error.type
+    });
     
-    // Fallback to mock data if OpenAI fails
-    console.log('🔄 Falling back to mock hook generation');
-    return {
-      hooks: [
-        {
-          pillar: contentPillars[0] || 'Industry Insights',
-          hook: 'Key insight from the meeting about industry trends',
-          confidence: 0.9,
-          reasoning: 'Fallback hook due to AI service error'
-        },
-        {
-          pillar: contentPillars[1] || 'Product Updates',
-          hook: 'Product feedback and improvement opportunities',
-          confidence: 0.8,
-          reasoning: 'Fallback hook due to AI service error'
-        },
-        {
-          pillar: contentPillars[2] || 'Customer Success',
-          hook: 'Customer success story and lessons learned',
-          confidence: 0.85,
-          reasoning: 'Fallback hook due to AI service error'
-        }
-      ]
-    };
+    // No fallback - throw error for proper debugging
+    throw new Error(`AI hook generation failed: ${error.message}`);
   }
 };
 
@@ -189,33 +181,33 @@ ${JSON.stringify(brandVoice, null, 2)}
 [Your existing post generation instructions]
 `;
 
-    const completion = await openai.chat.completions.create({
-      model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
+    const completion = await anthropic.messages.create({
+      model: process.env.CLAUDE_MODEL || 'claude-3-7-sonnet-latest',
+      max_tokens: 1000,
+      temperature: parseFloat(process.env.CLAUDE_TEMPERATURE) || 0.7,
       messages: [
         {
-          role: 'system',
-          content: 'You are an expert LinkedIn content creator who writes engaging, professional posts that drive meaningful conversations. You maintain brand voice while creating authentic, valuable content.'
-        },
-        {
           role: 'user',
-          content: postGenerationPrompt
+          content: `You are an expert LinkedIn content creator who writes engaging, professional posts that drive meaningful conversations. You maintain brand voice while creating authentic, valuable content.\n\n${postGenerationPrompt}`
         }
-      ],
-      temperature: parseFloat(process.env.OPENAI_TEMPERATURE) || 1.0,
-      max_completion_tokens: 500
+      ]
     });
 
-    const generatedPost = completion.choices[0].message.content.trim();
+    const generatedPost = completion.content[0].text.trim();
     
     console.log(`✅ Generated LinkedIn post (${generatedPost.length} characters)`);
     return generatedPost;
 
   } catch (error) {
     console.error('❌ LinkedIn post generation error:', error);
+    console.error('🔍 Full error details:', {
+      message: error.message,
+      status: error.status,
+      type: error.type
+    });
     
-    // Fallback to simple post format
-    console.log('🔄 Falling back to simple post format');
-    return `${hook}\n\nWhat's your experience with this?`;
+    // No fallback - throw error for proper debugging
+    throw new Error(`AI LinkedIn post generation failed: ${error.message}`);
   }
 };
 
@@ -262,14 +254,13 @@ The image should be visually appealing and complement a LinkedIn post about this
 
   } catch (error) {
     console.error('❌ Image generation error:', error);
+    console.error('🔍 Full image generation error details:', {
+      message: error.message,
+      status: error.status,
+      type: error.type
+    });
     
-    // Fallback to placeholder image
-    console.log('🔄 Falling back to placeholder image');
-    const fallbackUrl = `https://via.placeholder.com/400x300/4F46E5/FFFFFF?text=${encodeURIComponent('Marketing Insight')}`;
-    
-    return {
-      url: fallbackUrl,
-      prompt: `Fallback image for: ${hook}`
-    };
+    // No fallback - throw error for proper debugging  
+    throw new Error(`AI image generation failed: ${error.message}`);
   }
 };

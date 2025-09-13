@@ -1,11 +1,11 @@
-import OpenAI from 'openai';
+import Anthropic from '@anthropic-ai/sdk';
 import { processBrandVoice, formatBrandVoiceForPrompt } from './brandVoiceProcessor.js';
 import { getCustomLinkedInPrompt } from './promptGeneration.js';
 import prisma from '../../models/prisma.js';
 
-// Initialize OpenAI client
-const openai = process.env.OPENAI_API_KEY ? new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
+// Initialize Anthropic client
+const anthropic = process.env.ANTHROPIC_API_KEY ? new Anthropic({
+  apiKey: process.env.ANTHROPIC_API_KEY,
 }) : null;
 
 /**
@@ -16,10 +16,9 @@ const openai = process.env.OPENAI_API_KEY ? new OpenAI({
  * @returns {Promise<string[]>} Array of content hooks
  */
 export async function generateContentHooks(transcript, brandVoiceData, contentPillars = []) {
-  // If no OpenAI key, return mock data
-  if (!openai || !process.env.OPENAI_API_KEY || process.env.OPENAI_API_KEY === 'your_openai_api_key_here') {
-    console.log('🤖 Using mock AI - no OpenAI key configured');
-    return getMockContentHooks(transcript, brandVoiceData);
+  // If no Anthropic key, throw error - no fallbacks
+  if (!anthropic || !process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_API_KEY === 'your_anthropic_api_key_here') {
+    throw new Error('Anthropic API key not configured - cannot generate content hooks');
   }
 
   try {
@@ -49,17 +48,16 @@ Each hook should:
 Format: Return only the hooks, one per line, without numbering or bullets.
 `;
 
-    const completion = await openai.chat.completions.create({
-      model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
+    const completion = await anthropic.messages.create({
+      model: process.env.CLAUDE_MODEL || 'claude-3-7-sonnet-latest',
+      max_tokens: 1500,
+      temperature: parseFloat(process.env.CLAUDE_TEMPERATURE) || 0.7,
       messages: [
-        { role: 'system', content: 'You are a LinkedIn content strategist that extracts valuable content hooks from meeting transcripts.' },
-        { role: 'user', content: prompt }
-      ],
-      max_completion_tokens: 1000,
-      temperature: parseFloat(process.env.OPENAI_TEMPERATURE) || 1.0
+        { role: 'user', content: `You are a LinkedIn content strategist that extracts valuable content hooks from meeting transcripts.\n\n${prompt}` }
+      ]
     });
 
-    const response = completion.choices[0]?.message?.content || '';
+    const response = completion.content[0]?.text || '';
     const hooks = response.split('\n').filter(hook => hook.trim().length > 0);
 
     console.log(`✨ Generated ${hooks.length} content hooks using AI`);
@@ -67,8 +65,13 @@ Format: Return only the hooks, one per line, without numbering or bullets.
 
   } catch (error) {
     console.error('❌ Error generating content hooks:', error);
-    // Fallback to mock data
-    return getMockContentHooks(transcript, brandVoiceData);
+    console.error('🔍 Full error details:', {
+      message: error.message,
+      status: error.status,
+      type: error.type
+    });
+    // No fallback - throw error for proper debugging
+    throw new Error(`AI content hook generation failed: ${error.message}`);
   }
 }
 
@@ -80,10 +83,9 @@ Format: Return only the hooks, one per line, without numbering or bullets.
  * @returns {Promise<object>} LinkedIn post content and image prompt
  */
 export async function generateLinkedInPost(hook, brandVoiceData, contentPillars = []) {
-  // If no OpenAI key, return mock data
-  if (!openai || !process.env.OPENAI_API_KEY || process.env.OPENAI_API_KEY === 'your_openai_api_key_here') {
-    console.log('🤖 Using mock AI - no OpenAI key configured');
-    return getMockLinkedInPost(hook, brandVoiceData);
+  // If no Anthropic key, throw error - no fallbacks
+  if (!anthropic || !process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_API_KEY === 'your_anthropic_api_key_here') {
+    throw new Error('Anthropic API key not configured - cannot generate LinkedIn post');
   }
 
   try {
@@ -115,34 +117,43 @@ Format your response as JSON:
 }
 `;
 
-    const completion = await openai.chat.completions.create({
-      model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
+    const completion = await anthropic.messages.create({
+      model: process.env.CLAUDE_MODEL || 'claude-3-7-sonnet-latest',
       messages: [
-        { role: 'system', content: 'You are a LinkedIn content creator that writes engaging posts for business professionals. Always respond with valid JSON.' },
-        { role: 'user', content: prompt }
+        { role: 'user', content: `You are a LinkedIn content creator that writes engaging posts for business professionals. Always respond with valid JSON.\n\n${prompt}` }
       ],
-      max_completion_tokens: 800,
-      temperature: parseFloat(process.env.OPENAI_TEMPERATURE) || 1.0
+      max_tokens: 800,
+      temperature: parseFloat(process.env.CLAUDE_TEMPERATURE) || 0.7
     });
 
-    const response = completion.choices[0]?.message?.content || '';
+    const response = completion.content[0]?.text || '';
     
     try {
-      const result = JSON.parse(response);
+      // Handle Claude's markdown-wrapped JSON responses
+      let responseText = response.trim();
+      if (responseText.startsWith('```json')) {
+        responseText = responseText.replace(/^```json\n/, '').replace(/\n```$/, '');
+      } else if (responseText.startsWith('```')) {
+        responseText = responseText.replace(/^```\n/, '').replace(/\n```$/, '');
+      }
+      const result = JSON.parse(responseText);
       console.log('📱 Generated LinkedIn post using AI');
       return result;
     } catch (parseError) {
-      console.warn('⚠️ Failed to parse AI response as JSON, using fallback');
-      return {
-        content: response,
-        imagePrompt: "Professional business illustration related to the post content"
-      };
+      console.error('❌ Failed to parse AI response as JSON:', parseError);
+      console.error('📄 Raw AI response:', response);
+      throw new Error(`AI response parsing failed: ${parseError.message}`);
     }
 
   } catch (error) {
     console.error('❌ Error generating LinkedIn post:', error);
-    // Fallback to mock data
-    return getMockLinkedInPost(hook, brandVoiceData);
+    console.error('🔍 Full error details:', {
+      message: error.message,
+      status: error.status,
+      type: error.type
+    });
+    // No fallback - throw error for proper debugging
+    throw new Error(`AI LinkedIn post generation failed: ${error.message}`);
   }
 }
 
@@ -201,10 +212,9 @@ What's the biggest listing challenge you're facing right now? 👇`,
  * @returns {Promise<string>} Rewritten content
  */
 export async function rewriteContent(originalContent, instructions, brandVoiceData) {
-  // If no OpenAI key, return mock data
-  if (!openai || !process.env.OPENAI_API_KEY || process.env.OPENAI_API_KEY === 'your_openai_api_key_here') {
-    console.log('🤖 Using mock AI rewrite - no OpenAI key configured');
-    return getMockRewrite(originalContent, instructions);
+  // If no Anthropic key, throw error - no fallbacks
+  if (!anthropic || !process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_API_KEY === 'your_anthropic_api_key_here') {
+    throw new Error('Anthropic API key not configured - cannot rewrite content');
   }
 
   try {
@@ -227,14 +237,13 @@ Please rewrite the content following the instructions while maintaining the comp
 Return only the rewritten content, no explanations or additional text.
 `;
 
-    const completion = await openai.chat.completions.create({
-      model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
+    const completion = await anthropic.messages.create({
+      model: process.env.CLAUDE_MODEL || 'claude-3-7-sonnet-latest',
       messages: [
-        { role: 'system', content: 'You are a LinkedIn content editor that rewrites posts based on specific instructions while maintaining brand voice.' },
-        { role: 'user', content: prompt }
+        { role: 'user', content: `You are a LinkedIn content editor that rewrites posts based on specific instructions while maintaining brand voice.\n\n${prompt}` }
       ],
-      max_completion_tokens: 1000,
-      temperature: parseFloat(process.env.OPENAI_TEMPERATURE) || 1.0
+      max_tokens: 1000,
+      temperature: parseFloat(process.env.CLAUDE_TEMPERATURE) || 0.7
     });
 
     const rewrittenContent = completion.choices[0].message.content.trim();
@@ -256,10 +265,9 @@ Return only the rewritten content, no explanations or additional text.
  * @returns {Promise<object>} Enhanced LinkedIn post content
  */
 export async function generateEnhancedLinkedInPost(hookText, pillar, brandVoiceData, meetingSummary = '', hookContext = null, companyId = null) {
-  // If no OpenAI key, return mock data
-  if (!openai || !process.env.OPENAI_API_KEY || process.env.OPENAI_API_KEY === 'your_openai_api_key_here') {
-    console.log('🤖 Using mock enhanced LinkedIn post - no OpenAI key configured');
-    return getMockEnhancedLinkedInPost(hookText, pillar, brandVoiceData);
+  // If no Anthropic key, throw error - no fallbacks
+  if (!anthropic || !process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_API_KEY === 'your_anthropic_api_key_here') {
+    throw new Error('Anthropic API key not configured - cannot generate enhanced LinkedIn post');
   }
 
   try {
@@ -360,37 +368,56 @@ Return clean JSON:
 }`;
     }
 
-    const completion = await openai.chat.completions.create({
-      model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
+    const completion = await anthropic.messages.create({
+      model: process.env.CLAUDE_MODEL || 'claude-3-7-sonnet-latest',
       messages: [
         { 
-          role: 'system', 
-          content: `You are an expert LinkedIn content creator that writes engaging posts for business professionals. Always respond with valid JSON.` 
-        },
-        { role: 'user', content: prompt }
+          role: 'user', 
+          content: `You are an expert LinkedIn content creator that writes engaging posts for business professionals. Always respond with valid JSON.\n\n${prompt}` 
+        }
       ],
-      max_completion_tokens: 1500,
-      temperature: parseFloat(process.env.OPENAI_TEMPERATURE) || 1.0
+      max_tokens: 1500,
+      temperature: parseFloat(process.env.CLAUDE_TEMPERATURE) || 0.7
     });
 
-    const response = completion.choices[0]?.message?.content || '';
+    const response = completion.content[0]?.text || '';
     
     try {
-      const result = JSON.parse(response);
+      // Handle Claude's markdown-wrapped JSON responses
+      let responseText = response.trim();
+      console.log(`🔍 Raw LinkedIn response (first 200 chars): ${responseText.substring(0, 200)}`);
+      
+      // More robust markdown parsing
+      if (responseText.includes('```')) {
+        // Extract everything between first ``` and last ```
+        const match = responseText.match(/```(?:json)?\s*\n?([\s\S]*?)```/);
+        if (match) {
+          responseText = match[1].trim();
+        } else {
+          // Fallback: just remove all ``` lines
+          responseText = responseText.replace(/^```[a-z]*\s*\n?/i, '').replace(/\n?```\s*$/i, '');
+        }
+      }
+      
+      console.log(`🔍 Cleaned LinkedIn response (first 200 chars): ${responseText.substring(0, 200)}`);
+      const result = JSON.parse(responseText);
       console.log('📱 Generated enhanced LinkedIn post using AI');
       return result;
     } catch (parseError) {
-      console.warn('⚠️ Failed to parse enhanced AI response as JSON, using fallback');
-      return {
-        post: response,
-        reasoning: "AI response parsing failed, using raw content",
-        estimatedCharacterCount: response.length
-      };
+      console.error('❌ Failed to parse enhanced AI response as JSON:', parseError);
+      console.error('📄 Raw AI response:', response);
+      throw new Error(`Enhanced AI response parsing failed: ${parseError.message}`);
     }
 
   } catch (error) {
     console.error('❌ Error generating enhanced LinkedIn post:', error);
-    return getMockEnhancedLinkedInPost(hookText, pillar, brandVoiceData);
+    console.error('🔍 Full error details:', {
+      message: error.message,
+      status: error.status,
+      type: error.type
+    });
+    // No fallback - throw error for proper debugging
+    throw new Error(`Enhanced AI LinkedIn post generation failed: ${error.message}`);
   }
 }
 

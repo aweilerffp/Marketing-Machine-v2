@@ -64,9 +64,19 @@ export const processTranscript = async (job) => {
       }
     }
 
-    // Method 3: Handle missing company gracefully
+    // Method 3: Fallback to default dev company in development
+    if (!company && process.env.NODE_ENV === 'development') {
+      company = await prisma.company.findFirst({
+        where: { name: 'Emplicit' }
+      });
+      if (company) {
+        console.log(`🚧 Development mode: Using default company: ${company.name}`);
+      }
+    }
+
+    // Method 4: Handle missing company gracefully
     if (!company) {
-      console.log(`⚠️ No company found via token or email. Creating generic meeting record.`);
+      console.log(`⚠️ No company found via token, email, or dev fallback. Creating generic meeting record.`);
       // Continue processing but won't have brand voice data
     }
 
@@ -99,8 +109,28 @@ export const processTranscript = async (job) => {
     console.log(`💾 Stored meeting record: ${meeting.id}`);
 
     // Step 3: Generate marketing hooks using AI (with fallbacks)
-    const brandVoice = company?.brandVoiceData || {};
-    const contentPillars = company?.contentPillars || ['Industry Insights', 'Product Updates', 'Customer Success'];
+    let brandVoice = {};
+    if (company) {
+      // Parse brand voice JSON data and add company name
+      try {
+        brandVoice = company.brandVoiceData ? JSON.parse(company.brandVoiceData) : {};
+        brandVoice.companyName = company.name; // Add company name to brand voice data
+      } catch (error) {
+        console.warn('⚠️ Failed to parse brand voice data, using fallback');
+        brandVoice = { companyName: company.name };
+      }
+    }
+    // Parse content pillars (stored as JSON string)
+    let contentPillars = ['Industry Insights', 'Product Updates', 'Customer Success'];
+    if (company?.contentPillars) {
+      try {
+        contentPillars = typeof company.contentPillars === 'string' 
+          ? JSON.parse(company.contentPillars) 
+          : company.contentPillars;
+      } catch (error) {
+        console.warn('⚠️ Failed to parse content pillars, using defaults');
+      }
+    }
     
     // Create meeting metadata for better context
     const meetingMetadata = {
