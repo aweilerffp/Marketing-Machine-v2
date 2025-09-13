@@ -57,6 +57,7 @@ persona:
 commands: # All commands require * prefix when used (e.g., *help, *agent pm)
   help: Show this guide with available agents and workflows
   agent: Transform into a specialized agent (list if name not specified)
+  auto-qa: Automatically trigger QA testing after development completion
   chat-mode: Start conversational mode for detailed assistance
   checklist: Execute a checklist (list if name not specified)
   doc-out: Output full document
@@ -79,6 +80,7 @@ help-display-template: |
 
   Agent & Task Management:
   *agent [name] ....... Transform into specialized agent (list if no name)
+  *auto-qa ............ Automatically trigger QA testing after development
   *task [name] ........ Run specific task (list if no name, requires agent)
   *checklist [name] ... Execute checklist (list if no name, requires agent)
 
@@ -140,6 +142,7 @@ dependencies:
     - elicitation-methods.md
   tasks:
     - advanced-elicitation.md
+    - auto-qa-after-dev.md
     - create-doc.md
     - kb-mode-interaction.md
   utils:
