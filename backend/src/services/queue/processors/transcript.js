@@ -195,11 +195,25 @@ export const processTranscript = async (job) => {
         const brandColors = brandVoice.colors || [];
         const imageResult = await generateImage(hookText, brandColors, 'professional');
 
+        // Extract post content from AI response (handle various response formats)
+        let postContent;
+        if (typeof linkedinPost === 'string') {
+          postContent = linkedinPost;
+        } else if (linkedinPost.post) {
+          postContent = linkedinPost.post;
+        } else if (linkedinPost.linkedInPost?.body) {
+          postContent = linkedinPost.linkedInPost.body;
+        } else if (linkedinPost.linkedInPost) {
+          postContent = JSON.stringify(linkedinPost.linkedInPost);
+        } else {
+          postContent = JSON.stringify(linkedinPost);
+        }
+        
         // Create content post record
         await prisma.contentPost.create({
           data: {
             hookId: contentHook.id,
-            content: linkedinPost.post || linkedinPost,
+            content: postContent,
             imageUrl: imageResult.url,
             imagePrompt: imageResult.prompt,
             status: 'PENDING' // Will go to approval queue

@@ -21,7 +21,8 @@ export const CompanySettings: React.FC<CompanySettingsProps> = ({ onBack }) => {
     targetAudience: '',
     websiteContent: '',
     samplePosts: '',
-    brandColors: ''
+    brandColors: '',
+    contentPillars: ['Industry Insights', 'Product Updates', 'Customer Success']
   });
 
   // Prompt management state
@@ -92,15 +93,53 @@ export const CompanySettings: React.FC<CompanySettingsProps> = ({ onBack }) => {
           : '',
         brandColors: Array.isArray(company.brandVoiceData?.brandColors)
           ? company.brandVoiceData.brandColors.join(', ')
-          : ''
+          : '',
+        contentPillars: (() => {
+          try {
+            if (typeof company.contentPillars === 'string') {
+              return JSON.parse(company.contentPillars);
+            } else if (Array.isArray(company.contentPillars)) {
+              return company.contentPillars;
+            }
+          } catch (error) {
+            console.warn('Failed to parse content pillars:', error);
+          }
+          return ['Industry Insights', 'Product Updates', 'Customer Success'];
+        })()
       });
     }
   }, [company]);
 
-  const handleInputChange = (field: string, value: string) => {
+  const handleInputChange = (field: string, value: string | string[]) => {
     setFormData(prev => ({
       ...prev,
       [field]: value
+    }));
+  };
+
+  // Content pillars management
+  const addContentPillar = () => {
+    setFormData(prev => ({
+      ...prev,
+      contentPillars: Array.isArray(prev.contentPillars) ? [...prev.contentPillars, ''] : ['']
+    }));
+  };
+
+  const updateContentPillar = (index: number, value: string) => {
+    setFormData(prev => ({
+      ...prev,
+      contentPillars: Array.isArray(prev.contentPillars) 
+        ? prev.contentPillars.map((pillar, i) => i === index ? value : pillar)
+        : [value]
+    }));
+  };
+
+  const removeContentPillar = (index: number) => {
+    setFormData(prev => ({
+      ...prev,
+      contentPillars: Array.isArray(prev.contentPillars) 
+        ? prev.contentPillars.filter((_, i) => i !== index)
+        : []
     }));
   };
 
@@ -117,7 +156,9 @@ export const CompanySettings: React.FC<CompanySettingsProps> = ({ onBack }) => {
     const companyData = {
       name: formData.companyName,
       brandVoiceData,
-      contentPillars: company?.contentPillars || ['Industry Insights', 'Product Updates', 'Customer Success'],
+      contentPillars: Array.isArray(formData.contentPillars) 
+        ? formData.contentPillars.filter(pillar => pillar.trim() !== '')
+        : ['Industry Insights', 'Product Updates', 'Customer Success'],
       postingSchedule: company?.postingSchedule || {
         timezone: 'America/New_York',
         defaultTimes: ['09:00', '13:00']
@@ -359,6 +400,70 @@ export const CompanySettings: React.FC<CompanySettingsProps> = ({ onBack }) => {
                   />
                 ) : (
                   <p className="mt-1 text-gray-900">{company.brandVoiceData?.targetAudience || 'Not specified'}</p>
+                )}
+              </div>
+
+              {/* Content Pillars Section */}
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <Label>Content Pillars</Label>
+                  {isEditing && (
+                    <Button
+                      type="button"
+                      onClick={addContentPillar}
+                      variant="outline"
+                      size="sm"
+                      disabled={!Array.isArray(formData.contentPillars) || formData.contentPillars.length >= 10}
+                      className="text-blue-600 border-blue-200 hover:bg-blue-50"
+                    >
+                      + Add Pillar
+                    </Button>
+                  )}
+                </div>
+                {isEditing ? (
+                  <div className="space-y-2">
+                    {Array.isArray(formData.contentPillars) && formData.contentPillars.map((pillar, index) => (
+                      <div key={index} className="flex items-center space-x-2">
+                        <Input
+                          value={pillar}
+                          onChange={(e) => updateContentPillar(index, e.target.value)}
+                          placeholder={`Content pillar ${index + 1}`}
+                          className="flex-1"
+                        />
+                        {Array.isArray(formData.contentPillars) && formData.contentPillars.length > 1 && (
+                          <Button
+                            type="button"
+                            onClick={() => removeContentPillar(index)}
+                            variant="outline"
+                            size="sm"
+                            className="text-red-600 border-red-200 hover:bg-red-50 px-2"
+                          >
+                            ×
+                          </Button>
+                        )}
+                      </div>
+                    ))}
+                    <p className="text-xs text-gray-500 mt-2">
+                      Content pillars help categorize your marketing insights. These guide the AI in generating relevant content for your brand.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="mt-1">
+                    {Array.isArray(formData.contentPillars) && formData.contentPillars.length > 0 ? (
+                      <div className="flex flex-wrap gap-2">
+                        {formData.contentPillars.map((pillar, index) => (
+                          <span
+                            key={index}
+                            className="inline-flex items-center px-3 py-1 rounded-full text-sm bg-blue-100 text-blue-800"
+                          >
+                            {pillar}
+                          </span>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-gray-900">No content pillars defined</p>
+                    )}
+                  </div>
                 )}
               </div>
             </div>
@@ -683,7 +788,18 @@ export const CompanySettings: React.FC<CompanySettingsProps> = ({ onBack }) => {
         <div className="bg-purple-50 p-4 rounded-lg">
           <h3 className="font-medium text-purple-900">Content Pillars</h3>
           <p className="text-sm text-purple-700 mt-1">
-            {Array.isArray(company.contentPillars) ? company.contentPillars.length : 3} active
+            {(() => {
+              try {
+                if (typeof company.contentPillars === 'string') {
+                  return JSON.parse(company.contentPillars).length;
+                } else if (Array.isArray(company.contentPillars)) {
+                  return company.contentPillars.length;
+                }
+              } catch (error) {
+                console.warn('Failed to parse content pillars in stats:', error);
+              }
+              return 3;
+            })()} active
           </p>
         </div>
       </div>

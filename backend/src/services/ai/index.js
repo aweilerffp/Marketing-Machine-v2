@@ -1,8 +1,14 @@
 import Anthropic from '@anthropic-ai/sdk';
+import OpenAI from 'openai';
 import { processBrandVoice, formatBrandVoiceForPrompt } from './brandVoiceProcessor.js';
 
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
+});
+
+// OpenAI client for image generation only
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY,
 });
 
 // Helper function to generate industry-specific keywords
@@ -58,7 +64,7 @@ ROLE: You are ${processedBrandVoice.companyName}'s senior content strategist.
 - Never use buzzwords like "synergy," "paradigm," or "disrupt."
 
 ### Content Pillars & Priority (ranked)
-${contentPillars.map((pillar, index) => `${index + 1}. ${pillar}`).join('\n')}
+${Array.isArray(contentPillars) ? contentPillars.map((pillar, index) => `${index + 1}. ${pillar}`).join('\n') : '1. Industry Insights\n2. Product Updates\n3. Customer Success'}
 
 ### Inputs
 **Meeting Metadata**
@@ -68,7 +74,7 @@ ${contentPillars.map((pillar, index) => `${index + 1}. ${pillar}`).join('\n')}
 
 Five High-Leverage Questions to Ask Yourself (or the Stakeholder) First
 "What single insight do we most want the reader to remember?"
-"Which ${processedBrandVoice.targetAudience} persona is priority #1 for this piece?"
+"Which ${processedBrandVoice.targetAudience} is priority #1 for this piece?"
 "What emotion should the reader feel—relief, confidence, urgency?"
 "What action should they take next?"
 "Which examples, data points, or stories in the transcript most support that goal?"
@@ -79,13 +85,13 @@ ${transcript}
 """
 
 ### TASKS
-1. **Extract up to 10 distinct insights** *only if* they map to one of the ${contentPillars.length} pillars above and answer all 5 high leverage questions. Quote or paraphrase the exact transcript line.
+1. **Extract up to 10 distinct insights** *only if* they map to one of the ${Array.isArray(contentPillars) ? contentPillars.length : 3} pillars above and answer all 5 high leverage questions. Quote or paraphrase the exact transcript line.
 
 2. For each insight, generate:
    - **Blog angle** (title + 25-word hook)  
    - **LinkedIn hook** (≤150 words, ends with a question)  
    - **Tweet** (≤280 chars, 1 hashtag max)  
-   *→ Each deliverable must explicitly reference ${processedBrandVoice.industry} context OR address specific pain points: ${processedBrandVoice.painPoints.join(', ')}.*  
+   *→ Each deliverable must explicitly reference ${processedBrandVoice.keywords.join(', ')} OR a specific ${processedBrandVoice.painPoints.join(', ')} pain point*  
 
 3. Output as structured JSON:
 \`\`\`json

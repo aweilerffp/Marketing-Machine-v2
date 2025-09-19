@@ -400,9 +400,35 @@ Return clean JSON:
       }
       
       console.log(`🔍 Cleaned LinkedIn response (first 200 chars): ${responseText.substring(0, 200)}`);
-      const result = JSON.parse(responseText);
-      console.log('📱 Generated enhanced LinkedIn post using AI');
-      return result;
+      
+      // Try to fix common JSON issues
+      let fixedResponseText = responseText;
+      
+      // Fix unescaped quotes in string values
+      fixedResponseText = fixedResponseText.replace(/: "(.*?)"(,|\n|$)/g, (match, content, suffix) => {
+        const escapedContent = content.replace(/"/g, '\\"');
+        return `: "${escapedContent}"${suffix}`;
+      });
+      
+      // Fix trailing commas
+      fixedResponseText = fixedResponseText.replace(/,\s*([}\]])/g, '$1');
+      
+      try {
+        const result = JSON.parse(fixedResponseText);
+        console.log('📱 Generated enhanced LinkedIn post using AI');
+        return result;
+      } catch (secondParseError) {
+        console.error('❌ Still failed after JSON fixes:', secondParseError);
+        
+        // Last resort: extract post content with regex if it's a simple format
+        const simplePostMatch = responseText.match(/"post":\s*"([^"]*(?:\\.[^"]*)*)"/);
+        if (simplePostMatch) {
+          console.log('🔧 Extracted post content with regex fallback');
+          return { post: simplePostMatch[1].replace(/\\"/g, '"') };
+        }
+        
+        throw new Error(`Enhanced AI response parsing failed even after fixes: ${secondParseError.message}`);
+      }
     } catch (parseError) {
       console.error('❌ Failed to parse enhanced AI response as JSON:', parseError);
       console.error('📄 Raw AI response:', response);
