@@ -47,11 +47,13 @@ model Meeting {
   actionItems     Json?
   contentHooks    ContentHook[]
   processedStatus ProcessedStatus @default(PENDING)
+  processingStep  ProcessingStep? @default(RECEIVED)
   processedAt     DateTime?
   createdAt       DateTime       @default(now())
 
   @@index([companyId])
   @@index([processedStatus])
+  @@index([processingStep])
   @@index([createdAt])
   @@index([companyId, processedStatus])
 }
@@ -106,6 +108,15 @@ enum ProcessedStatus {
   PROCESSING
   COMPLETED
   FAILED
+}
+
+enum ProcessingStep {
+  RECEIVED
+  ANALYZING_BRAND_VOICE
+  GENERATING_HOOKS
+  WRITING_POSTS
+  CREATING_IMAGES
+  COMPLETED
 }
 
 model PlatformConnection {

@@ -16,6 +16,18 @@ const prisma = new PrismaClient({
   log: process.env.NODE_ENV === 'development' ? ['query', 'error'] : ['error']
 });
 
+// Helper function to update processing step
+const updateProcessingStep = async (meetingId, step) => {
+  console.log(`📍 Processing step: ${step}`);
+  await prisma.meeting.update({
+    where: { id: meetingId },
+    data: { 
+      processingStep: step,
+      processedStatus: step === 'COMPLETED' ? 'COMPLETED' : 'PROCESSING'
+    }
+  });
+};
+
 export const processTranscript = async (job) => {
   const { 
     sessionId, 
@@ -107,6 +119,9 @@ export const processTranscript = async (job) => {
     });
 
     console.log(`💾 Stored meeting record: ${meeting.id}`);
+    
+    // Step 2.5: Update processing step to analyzing brand voice
+    await updateProcessingStep(meeting.id, 'ANALYZING_BRAND_VOICE');
 
     // Step 3: Generate marketing hooks using AI (with fallbacks)
     let brandVoice = {};
@@ -141,6 +156,9 @@ export const processTranscript = async (job) => {
       goal: `Extract actionable insights from ${title || 'meeting'}`
     };
     
+    // Step 3.5: Update processing step to generating hooks
+    await updateProcessingStep(meeting.id, 'GENERATING_HOOKS');
+    
     const hooksResult = await generateHooks(transcript, brandVoice, contentPillars, meetingMetadata);
     const hooks = hooksResult.insights || hooksResult.hooks || [];
 
@@ -152,6 +170,9 @@ export const processTranscript = async (job) => {
 
     let processedHooks = 0;
     let processedPosts = 0;
+
+    // Step 4.5: Update processing step to writing posts
+    await updateProcessingStep(meeting.id, 'WRITING_POSTS');
 
     // Step 5: Process each hook to create content
     for (const hookData of selectedHooks) {
@@ -190,6 +211,11 @@ export const processTranscript = async (job) => {
           hookContext,
           company?.id
         );
+
+        // Step 5.5: Update processing step to creating images (only on first hook)
+        if (processedPosts === 0) {
+          await updateProcessingStep(meeting.id, 'CREATING_IMAGES');
+        }
 
         // Generate accompanying image
         const brandColors = brandVoice.colors || [];
@@ -240,10 +266,7 @@ export const processTranscript = async (job) => {
     };
 
     // Step 6: Update meeting status to COMPLETED
-    await prisma.meeting.update({
-      where: { id: meeting.id },
-      data: { processedStatus: 'COMPLETED' }
-    });
+    await updateProcessingStep(meeting.id, 'COMPLETED');
 
     console.log(`✅ Transcript processing completed for ${sessionId}`);
     console.log(`📊 Results: ${processedPosts} posts created from ${processedHooks} hooks`);

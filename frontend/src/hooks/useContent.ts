@@ -100,10 +100,10 @@ export function useInvalidateDashboard() {
   
   return {
     invalidateDashboard: () => {
-      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.dashboard })
+      return queryClient.invalidateQueries({ queryKey: QUERY_KEYS.dashboard })
     },
     refetchDashboard: () => {
-      queryClient.refetchQueries({ queryKey: QUERY_KEYS.dashboard })
+      return queryClient.refetchQueries({ queryKey: QUERY_KEYS.dashboard })
     }
   }
 }

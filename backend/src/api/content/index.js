@@ -99,6 +99,7 @@ router.get('/dashboard', requireAuth, async (req, res) => {
           title: true,
           summary: true,
           processedStatus: true,
+          processingStep: true,
           processedAt: true,
           createdAt: true,
           contentHooks: {
@@ -523,6 +524,7 @@ router.get('/meetings', requireAuth, async (req, res) => {
           title: true,
           summary: true,
           processedStatus: true,
+          processingStep: true,
           processedAt: true,
           createdAt: true,
           contentHooks: {
@@ -563,6 +565,7 @@ router.get('/meetings', requireAuth, async (req, res) => {
           title: true,
           summary: true,
           processedStatus: true,
+          processingStep: true,
           processedAt: true,
           createdAt: true,
           contentHooks: {
@@ -674,6 +677,7 @@ router.post('/meetings/:meetingId/reprocess', requireAuth, async (req, res) => {
       where: { id: meeting.id },
       data: { 
         processedStatus: 'PROCESSING',
+        processingStep: 'RECEIVED',
         processedAt: new Date()
       }
     });

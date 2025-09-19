@@ -23,12 +23,12 @@ export function ContentQueue() {
   })
 
   // Use optimized dashboard data for better performance
-  const { data: dashboardData, isLoading: dashboardLoading, error: dashboardError } = useDashboardData()
+  const { data: dashboardData, isLoading: dashboardLoading, error: dashboardError, refetch: refetchDashboard } = useDashboardData()
   const posts = dashboardData?.posts || []
   const meetings = dashboardData?.meetings || []
   const reprocessMeetingMutation = useReprocessMeeting()
   const deleteMeetingMutation = useDeleteMeeting()
-  const { refetchDashboard: manualRefetchDashboard } = useInvalidateDashboard()
+  const [isRefreshing, setIsRefreshing] = useState(false)
   
   // Optimized mutations
   const updatePostStatusMutation = useUpdatePostStatus()
@@ -38,21 +38,30 @@ export function ContentQueue() {
   const isLoading = dashboardLoading
   const error = dashboardError ? handleApiError(dashboardError).message : null
 
-  // Remove manual data loading since we use React Query now
-
-  // Import dashboard invalidation
-  const { invalidateDashboard } = useInvalidateDashboard()
+  // Refresh function with proper visual feedback
+  const handleRefresh = async () => {
+    console.log('🔄 Refresh button clicked')
+    setIsRefreshing(true)
+    try {
+      await refetchDashboard()
+      console.log('✅ Dashboard refresh completed')
+    } catch (error) {
+      console.error('❌ Dashboard refresh failed:', error)
+    } finally {
+      setIsRefreshing(false)
+    }
+  }
   
   // Add focus listener for manual refresh when user returns to tab
   useEffect(() => {
     const handleFocus = () => {
       // Refresh dashboard data when user focuses on the window
-      invalidateDashboard()
+      refetchDashboard()
     }
 
     window.addEventListener('focus', handleFocus)
     return () => window.removeEventListener('focus', handleFocus)
-  }, [invalidateDashboard])
+  }, [refetchDashboard])
 
   const handleRewrite = (postId: string) => {
     const post = posts.find(p => p.id === postId)
@@ -210,9 +219,10 @@ export function ContentQueue() {
               <Button 
                 variant="outline" 
                 size="sm" 
-                onClick={() => manualRefetchDashboard()}
+                onClick={handleRefresh}
+                disabled={isLoading || isRefreshing}
               >
-                Retry Data
+                {(isLoading || isRefreshing) ? "Retrying..." : "Retry Data"}
               </Button>
             </div>
           </div>
@@ -320,27 +330,17 @@ export function ContentQueue() {
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => manualRefetchDashboard()}
-                  disabled={dashboardLoading}
-                  className="flex items-center gap-2"
+                  onClick={handleRefresh}
+                  disabled={isLoading || isRefreshing}
+                  className="flex items-center gap-2 hover:bg-gray-50 active:bg-gray-100 transition-colors"
                 >
-                  <RefreshCw className={`h-4 w-4 ${dashboardLoading ? 'animate-spin' : ''}`} />
-                  Refresh
+                  <RefreshCw className={`h-4 w-4 ${(isLoading || isRefreshing) ? 'animate-spin' : ''}`} />
+                  {(isLoading || isRefreshing) ? "Refreshing..." : "Refresh"}
                 </Button>
               </div>
               <p className="text-muted-foreground">
                 {meetings.length} meetings with generated content
               </p>
-              <div className="mt-4">
-                <Button 
-                  variant="outline" 
-                  size="sm" 
-                  onClick={() => manualRefetchDashboard()}
-                  disabled={dashboardLoading}
-                >
-                  {dashboardLoading ? "Loading..." : "Refresh Data"}
-                </Button>
-              </div>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-6xl mx-auto">

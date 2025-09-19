@@ -6,6 +6,7 @@ import { Button } from "./ui/button"
 import { Badge } from "./ui/badge"
 import { Card, CardContent, CardFooter, CardHeader } from "./ui/card"
 import { HooksModal } from "./modals/HooksModal"
+import { ProcessingStepVisualizer } from "./ProcessingStepVisualizer"
 
 interface Meeting {
   id: string
@@ -13,6 +14,7 @@ interface Meeting {
   title?: string
   summary?: string
   processedStatus: 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'FAILED'
+  processingStep?: 'RECEIVED' | 'ANALYZING_BRAND_VOICE' | 'GENERATING_HOOKS' | 'WRITING_POSTS' | 'CREATING_IMAGES' | 'COMPLETED'
   processedAt?: string
   createdAt: string
   contentHooks: Array<{
@@ -94,9 +96,21 @@ export function MeetingCard({ meeting, onReprocess, onDelete }: MeetingCardProps
               </span>
             </div>
           </div>
-          <Badge className={`${getStatusColor(meeting.processedStatus)} border-0`}>
-            {getStatusText(meeting.processedStatus)}
-          </Badge>
+          {/* Show processing visualization for PROCESSING status, simple badge for others */}
+          {meeting.processedStatus === 'PROCESSING' ? (
+            <div className="w-full max-w-xs">
+              <ProcessingStepVisualizer 
+                currentStep={meeting.processingStep}
+                processedStatus={meeting.processedStatus}
+                showLabels={false}
+                compact={true}
+              />
+            </div>
+          ) : (
+            <Badge className={`${getStatusColor(meeting.processedStatus)} border-0`}>
+              {getStatusText(meeting.processedStatus)}
+            </Badge>
+          )}
         </div>
       </CardHeader>
 
