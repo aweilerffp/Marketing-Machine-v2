@@ -16,8 +16,19 @@ import companyRouter from './api/company/index.js';
 import contentRouter from './api/content/index.js';
 import linkedinRouter from './api/linkedin/index.js';
 
-// Load environment variables
-dotenv.config();
+// Load environment variables - prioritize .env.local for development
+dotenv.config(); // Load .env first as base
+dotenv.config({ path: '.env.local', override: true }); // Override with .env.local if it exists
+
+// Import security validation
+import { validateEnvironmentKeys, apiKeySecurityMiddleware } from './middleware/apiKeyValidation.js';
+
+// Validate API keys at startup
+const keyValidation = validateEnvironmentKeys();
+if (!keyValidation.valid && !keyValidation.allowContinue) {
+  console.error('🚨 Critical security issues detected. Exiting...');
+  process.exit(1);
+}
 
 // Initialize
 const app = express();
@@ -35,6 +46,9 @@ app.use(cors({
 app.use(morgan('combined'));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
+
+// API Key security middleware
+app.use(apiKeySecurityMiddleware);
 
 // Health check (before auth middleware)
 app.get('/health', (req, res) => {

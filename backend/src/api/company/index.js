@@ -59,31 +59,42 @@ router.get('/current', requireAuth, async (req, res) => {
         });
       }
 
-      // If dev user has no company, find an existing company with brand voice data and assign it
-      if (!devUser.company) {
-        const existingCompany = await prisma.company.findFirst({
-          where: {
-            AND: [
-              { brandVoiceData: { not: null } },
-              { name: { not: 'temp' } },
-              { userId: null } // Unassigned company
-            ]
-          }
-        });
-
-        if (existingCompany) {
-          console.log(`🚧 Dev mode: Assigning existing company ${existingCompany.name} to dev user`);
-          const updatedCompany = await prisma.company.update({
-            where: { id: existingCompany.id },
-            data: { userId: devUser.id }
-          });
-          return res.json(updatedCompany);
-        }
+      // If dev user already has a company, return it  
+      // First check the Prisma relationship
+      console.log(`🚧 Dev mode: devUser.company status:`, devUser.company ? `Found: ${devUser.company.name}` : 'NULL');
+      if (devUser.company) {
+        console.log(`🚧 Dev mode: Using dev user's existing company: ${devUser.company.name}`);
+        return res.json(devUser.company);
+      }
+      
+      // If Prisma relationship failed, try direct query by userId
+      console.log(`🚧 Dev mode: Prisma relationship failed, trying direct query for userId: ${devUser.id}`);
+      const directCompany = await prisma.company.findFirst({
+        where: { userId: devUser.id }
+      });
+      
+      if (directCompany) {
+        console.log(`🚧 Dev mode: Found company via direct query: ${directCompany.name}`);
+        return res.json(directCompany);
       }
 
-      if (devUser.company) {
-        console.log(`🚧 Dev mode: Using dev user's company: ${devUser.company.name}`);
-        return res.json(devUser.company);
+      // If dev user has no company, find an existing company with brand voice data
+      const existingCompany = await prisma.company.findFirst({
+        where: {
+          AND: [
+            { brandVoiceData: { not: null } },
+            { name: { not: 'temp' } }
+          ]
+        }
+      });
+
+      if (existingCompany) {
+        console.log(`🚧 Dev mode: Assigning existing company ${existingCompany.name} to dev user`);
+        const updatedCompany = await prisma.company.update({
+          where: { id: existingCompany.id },
+          data: { userId: devUser.id }
+        });
+        return res.json(updatedCompany);
       }
 
       // No company found, will proceed to create one or return null
