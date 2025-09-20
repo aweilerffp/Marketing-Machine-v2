@@ -16,21 +16,25 @@ async function restoreData() {
   try {
     console.log('🔄 Restoring development data...');
     
-    // 1. Create dev user
-    console.log('👤 Creating dev user...');
-    const user = await prisma.user.create({
-      data: {
-        id: 'cmfrpowq30001nwm0uu7887qf',
+    // 1. Create dev user (use upsert to handle existing user)
+    console.log('👤 Creating/updating dev user...');
+    const user = await prisma.user.upsert({
+      where: { clerkId: 'dev_user_123' },
+      create: {
         clerkId: 'dev_user_123',
+        email: 'dev@example.com'
+      },
+      update: {
         email: 'dev@example.com'
       }
     });
-    console.log(`✅ Created user: ${user.email}`);
+    console.log(`✅ User ready: ${user.email} (ID: ${user.id})`);
     
     // 2. Create Emplicit company with brand voice data
-    console.log('🏢 Creating Emplicit company...');
-    const company = await prisma.company.create({
-      data: {
+    console.log('🏢 Creating/updating Emplicit company...');
+    const company = await prisma.company.upsert({
+      where: { userId: user.id },
+      create: {
         userId: user.id,
         name: 'Emplicit',
         brandVoiceData: JSON.parse(BRAND_VOICE_DATA),
@@ -49,9 +53,19 @@ async function restoreData() {
         },
         supportedPlatforms: JSON.stringify(["linkedin"]),
         webhookActive: true
+      },
+      update: {
+        name: 'Emplicit',
+        brandVoiceData: JSON.parse(BRAND_VOICE_DATA),
+        contentPillars: JSON.stringify([
+          "Immigration Expertise",
+          "Technology Innovation", 
+          "Success Stories",
+          "Simplification"
+        ])
       }
     });
-    console.log(`✅ Created company: ${company.name}`);
+    console.log(`✅ Company ready: ${company.name}`);
     console.log(`📝 Brand voice data length: ${JSON.stringify(company.brandVoiceData).length} characters`);
     
     // 3. Verify everything works
