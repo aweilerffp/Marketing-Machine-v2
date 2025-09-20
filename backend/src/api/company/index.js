@@ -10,38 +10,16 @@ const router = express.Router();
 router.get('/', requireAuth, async (req, res) => {
   try {
     const clerkId = getUserId(req);
-    
-    let user = await prisma.user.findUnique({
-      where: { clerkId },
-      include: { company: true }
-    });
-
-    // Just-in-time user creation: if user doesn't exist, create them
-    if (!user) {
-      console.log(`Creating new user for Clerk ID: ${clerkId}`);
-      user = await prisma.user.create({
-        data: {
-          clerkId,
-          email: req.auth.user?.emailAddresses?.[0]?.emailAddress || `${clerkId}@example.com`
-        },
-        include: { company: true }
-      });
-    }
-
-    res.json(user.company);
-  } catch (error) {
-    console.error('Company fetch error:', error);
-    res.status(500).json({ error: 'Failed to get company' });
-  }
-});
-
-// Get current user's company (alias for frontend API service)
-router.get('/current', requireAuth, async (req, res) => {
-  try {
-    const clerkId = getUserId(req);
+    console.log(`🔍 Company API called with clerkId: ${clerkId}`);
     
     // In dev mode with mock auth, ensure we have a specific dev user and company
     if (clerkId === 'dev_user_123') {
+      // Debug: Check all users in the database first
+      const allUsers = await prisma.user.findMany({
+        where: { clerkId: 'dev_user_123' }
+      });
+      console.log(`🚧 Dev mode: Found ${allUsers.length} users with clerkId dev_user_123:`, allUsers.map(u => ({id: u.id, email: u.email})));
+      
       // Find or create dev user
       let devUser = await prisma.user.findUnique({
         where: { clerkId: 'dev_user_123' },
@@ -58,6 +36,8 @@ router.get('/current', requireAuth, async (req, res) => {
           include: { company: true }
         });
       }
+
+      console.log(`🚧 Dev mode: Found user with ID ${devUser.id} and clerkId ${devUser.clerkId}`);
 
       // If dev user already has a company, return it  
       // First check the Prisma relationship
@@ -97,11 +77,143 @@ router.get('/current', requireAuth, async (req, res) => {
         return res.json(updatedCompany);
       }
 
-      // No company found, will proceed to create one or return null
-      console.log('🚧 Dev mode: No company found for dev user');
+      // If no existing company found, return null to indicate onboarding needed
+      // Last resort: try to find Emplicit company specifically
+      console.log(`🚧 Dev mode: Last resort - looking for Emplicit company specifically`);
+      const emplicityCompany = await prisma.company.findFirst({
+        where: { name: 'Emplicit' }
+      });
+
+      if (emplicityCompany) {
+        console.log(`🚧 Dev mode: Found Emplicit company with ID ${emplicityCompany.id}, assigning to dev user`);
+        const updatedCompany = await prisma.company.update({
+          where: { id: emplicityCompany.id },
+          data: { userId: devUser.id }
+        });
+        return res.json(updatedCompany);
+      }
+
+      console.log('🚧 Dev mode: No existing company found, user needs onboarding');
       return res.json(null);
     }
     
+    // Normal production user lookup
+    let user = await prisma.user.findUnique({
+      where: { clerkId },
+      include: { company: true }
+    });
+
+    // Just-in-time user creation: if user doesn't exist, create them
+    if (!user) {
+      console.log(`Creating new user for Clerk ID: ${clerkId}`);
+      user = await prisma.user.create({
+        data: {
+          clerkId,
+          email: req.auth.user?.emailAddresses?.[0]?.emailAddress || `${clerkId}@example.com`
+        },
+        include: { company: true }
+      });
+    }
+
+    res.json(user.company);
+  } catch (error) {
+    console.error('Company fetch error:', error);
+    res.status(500).json({ error: 'Failed to get company' });
+  }
+});
+
+// Get current user's company (alias for frontend API service)
+router.get('/current', requireAuth, async (req, res) => {
+  try {
+    const clerkId = getUserId(req);
+    console.log(`🔍 Company API /current called with clerkId: ${clerkId}`);
+    
+    // In dev mode with mock auth, ensure we have a specific dev user and company
+    if (clerkId === 'dev_user_123') {
+      // Debug: Check all users in the database first
+      const allUsers = await prisma.user.findMany({
+        where: { clerkId: 'dev_user_123' }
+      });
+      console.log(`🚧 Dev mode: Found ${allUsers.length} users with clerkId dev_user_123:`, allUsers.map(u => ({id: u.id, email: u.email})));
+      
+      // Find or create dev user
+      let devUser = await prisma.user.findUnique({
+        where: { clerkId: 'dev_user_123' },
+        include: { company: true }
+      });
+
+      if (!devUser) {
+        console.log('🚧 Dev mode: Creating dev user');
+        devUser = await prisma.user.create({
+          data: {
+            clerkId: 'dev_user_123',
+            email: 'dev@example.com'
+          },
+          include: { company: true }
+        });
+      }
+
+      console.log(`🚧 Dev mode: Found user with ID ${devUser.id} and clerkId ${devUser.clerkId}`);
+
+      // If dev user already has a company, return it  
+      // First check the Prisma relationship
+      console.log(`🚧 Dev mode: devUser.company status:`, devUser.company ? `Found: ${devUser.company.name}` : 'NULL');
+      if (devUser.company) {
+        console.log(`🚧 Dev mode: Using dev user's existing company: ${devUser.company.name}`);
+        return res.json(devUser.company);
+      }
+      
+      // If Prisma relationship failed, try direct query by userId
+      console.log(`🚧 Dev mode: Prisma relationship failed, trying direct query for userId: ${devUser.id}`);
+      const directCompany = await prisma.company.findFirst({
+        where: { userId: devUser.id }
+      });
+      
+      if (directCompany) {
+        console.log(`🚧 Dev mode: Found company via direct query: ${directCompany.name}`);
+        return res.json(directCompany);
+      }
+
+      // If dev user has no company, find an existing company with brand voice data
+      const existingCompany = await prisma.company.findFirst({
+        where: {
+          AND: [
+            { brandVoiceData: { not: null } },
+            { name: { not: 'temp' } }
+          ]
+        }
+      });
+
+      if (existingCompany) {
+        console.log(`🚧 Dev mode: Assigning existing company ${existingCompany.name} to dev user`);
+        const updatedCompany = await prisma.company.update({
+          where: { id: existingCompany.id },
+          data: { userId: devUser.id }
+        });
+        return res.json(updatedCompany);
+      }
+
+      // If no existing company found, return null to indicate onboarding needed
+      // Last resort: try to find Emplicit company specifically
+      console.log(`🚧 Dev mode: Last resort - looking for Emplicit company specifically`);
+      const emplicityCompany = await prisma.company.findFirst({
+        where: { name: 'Emplicit' }
+      });
+
+      if (emplicityCompany) {
+        console.log(`🚧 Dev mode: Found Emplicit company with ID ${emplicityCompany.id}, assigning to dev user`);
+        const updatedCompany = await prisma.company.update({
+          where: { id: emplicityCompany.id },
+          data: { userId: devUser.id }
+        });
+        return res.json(updatedCompany);
+      }
+
+      console.log('🚧 Dev mode: No existing company found, user needs onboarding');
+      return res.json(null);
+    }
+    
+    // Normal production user lookup
     let user = await prisma.user.findUnique({
       where: { clerkId },
       include: { company: true }
@@ -496,7 +608,6 @@ router.get('/prompt', requireAuth, async (req, res) => {
             AND: [
               { brandVoiceData: { not: null } },
               { name: { not: 'temp' } },
-              { userId: null } // Unassigned company
             ]
           }
         });
@@ -665,7 +776,6 @@ router.post('/prompt/regenerate', requireAuth, async (req, res) => {
             AND: [
               { brandVoiceData: { not: null } },
               { name: { not: 'temp' } },
-              { userId: null } // Unassigned company
             ]
           }
         });
