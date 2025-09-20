@@ -306,6 +306,38 @@ export const companyApi = {
   }> => {
     const response = await api.post('/api/company/prompt/regenerate');
     return response.data;
+  },
+
+  // Hook prompt management
+  getHookPrompt: async (): Promise<{
+    prompt: string;
+    lastGenerated: string;
+    lastModified: string;
+    isCustom: boolean;
+    companyName: string;
+  }> => {
+    const response = await api.get('/api/company/hook-prompt');
+    return response.data;
+  },
+
+  updateHookPrompt: async (prompt: string): Promise<{
+    prompt: string;
+    lastModified: string;
+    message: string;
+    companyName: string;
+  }> => {
+    const response = await api.put('/api/company/hook-prompt', { prompt });
+    return response.data;
+  },
+
+  regenerateHookPrompt: async (): Promise<{
+    prompt: string;
+    lastGenerated: string;
+    message: string;
+    companyName: string;
+  }> => {
+    const response = await api.post('/api/company/hook-prompt/regenerate');
+    return response.data;
   }
 };
 

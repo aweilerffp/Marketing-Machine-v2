@@ -31,6 +31,7 @@ model Company {
   webhookToken           String?  @unique // Secret token for Read.ai webhook authentication
   webhookActive          Boolean  @default(true) // Allow enabling/disabling webhook processing
   customLinkedInPrompt   String?  // AI-generated custom prompt for LinkedIn post generation
+  customHookPrompt       String?  // AI-generated custom prompt for hook generation
   meetings               Meeting[]
   createdAt              DateTime @default(now())
   updatedAt              DateTime @updatedAt

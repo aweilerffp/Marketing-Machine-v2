@@ -283,6 +283,154 @@ function getBasicIndustryICP(brandVoiceData) {
 }
 
 /**
+ * Generate custom hook prompt from template using company-specific data
+ * @param {string} companyId - Company ID
+ * @returns {Promise<string>} Custom hook prompt
+ */
+export async function generateCustomHookPrompt(companyId) {
+  // If no Anthropic key, return basic template
+  if (!anthropic || !process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_API_KEY === 'your_anthropic_api_key_here') {
+    console.log('🤖 Using basic hook prompt template - no Anthropic key configured');
+    return getBasicHookPromptTemplate();
+  }
+
+  try {
+    // Get company data
+    const company = await prisma.company.findUnique({
+      where: { id: companyId }
+    });
+
+    if (!company) {
+      throw new Error(`Company not found: ${companyId}`);
+    }
+
+    // Process and enhance brand voice data
+    const processedBrandVoice = processBrandVoice(company.brandVoiceData);
+    const enhancedBrandData = await autoDetectIndustryAndICP(processedBrandVoice);
+
+    const metaPrompt = `
+You are a prompt engineering expert creating a custom hook generation prompt for a specific company.
+
+COMPANY DATA:
+- Company Name: ${company.name}
+- Industry: ${enhancedBrandData.industry}
+- Target Audience (ICP): ${enhancedBrandData.targetAudience}
+- Industry Keywords: ${enhancedBrandData.industryKeywords?.join(', ') || 'N/A'}
+- Pain Points: ${enhancedBrandData.painPoints?.join(', ') || 'N/A'}
+
+BRAND VOICE CONTEXT:
+${enhancedBrandData.websiteContent?.substring(0, 1500) || 'No website content available'}
+
+HOOK PROMPT TEMPLATE TO CUSTOMIZE:
+You are a senior LinkedIn content strategist specializing in {industry} companies.
+
+Based on {company}'s expertise in {industry}, extract 3-5 content hooks that would make engaging LinkedIn posts for {target_audience}.
+
+Focus on insights that address these specific pain points: {pain_points}.
+
+Each hook should:
+1. Be actionable and valuable to {target_audience}
+2. Include specific numbers, examples, or concrete problems/solutions from the meeting
+3. Use these industry keywords naturally: {keywords}
+4. Match {company}'s tone: {tone}
+5. Be written as a complete thought that only {company} would know from their {industry} experience
+
+Meeting Transcript:
+{transcript}
+
+Format: Return only the hooks, one per line, without numbering or bullets.
+
+INSTRUCTIONS:
+1. Replace ALL placeholder variables {company}, {industry}, {target_audience}, etc. with the actual company data provided above
+2. Add specific industry keywords that are relevant to this company
+3. Customize the pain points to match this company's specific focus areas
+4. Make the language and tone match the company's brand voice from the website content
+5. Keep the structural elements but make them hyper-specific to this company
+
+Return the complete customized hook prompt ready to use for hook generation.
+`;
+
+    const completion = await anthropic.messages.create({
+      model: process.env.CLAUDE_MODEL || 'claude-3-7-sonnet-latest',
+      max_tokens: 1500,
+      temperature: parseFloat(process.env.CLAUDE_TEMPERATURE) || 0.7,
+      messages: [
+        { role: 'user', content: `You are a prompt engineering expert that customizes hook generation prompts for specific companies. Return the complete customized prompt.\n\n${metaPrompt}` }
+      ]
+    });
+
+    const customPrompt = completion.content[0]?.text || getBasicHookPromptTemplate();
+    
+    // Store the custom prompt in the database
+    await prisma.company.update({
+      where: { id: companyId },
+      data: { customHookPrompt: customPrompt }
+    });
+
+    console.log(`✨ Generated custom hook prompt for ${company.name}`);
+    return customPrompt;
+
+  } catch (error) {
+    console.error('❌ Error generating custom hook prompt:', error);
+    return getBasicHookPromptTemplate();
+  }
+}
+
+/**
+ * Get or generate custom hook prompt for a company
+ * @param {string} companyId - Company ID  
+ * @returns {Promise<string>} Custom hook prompt (existing or newly generated)
+ */
+export async function getCustomHookPrompt(companyId) {
+  try {
+    const company = await prisma.company.findUnique({
+      where: { id: companyId }
+    });
+
+    if (!company) {
+      throw new Error(`Company not found: ${companyId}`);
+    }
+
+    // If custom prompt already exists, return it
+    if (company.customHookPrompt) {
+      console.log(`📋 Using existing custom hook prompt for ${company.name}`);
+      return company.customHookPrompt;
+    }
+
+    // Generate new custom prompt
+    console.log(`🎯 Generating new custom hook prompt for ${company.name}`);
+    return await generateCustomHookPrompt(companyId);
+    
+  } catch (error) {
+    console.error('❌ Error getting custom hook prompt:', error);
+    return getBasicHookPromptTemplate();
+  }
+}
+
+/**
+ * Basic hook prompt template fallback
+ */
+function getBasicHookPromptTemplate() {
+  return `You are a senior LinkedIn content strategist specializing in business content.
+
+Based on the company's expertise, extract 3-5 content hooks that would make engaging LinkedIn posts for business professionals.
+
+Focus on insights that address common business pain points and challenges.
+
+Each hook should:
+1. Be actionable and valuable to the target audience
+2. Include specific numbers, examples, or concrete problems/solutions from the meeting
+3. Use industry keywords naturally
+4. Match a professional but approachable tone
+5. Be written as a complete thought that demonstrates expertise
+
+Meeting Transcript:
+{transcript}
+
+Format: Return only the hooks, one per line, without numbering or bullets.`;
+}
+
+/**
  * Basic prompt template fallback
  */
 function getBasicPromptTemplate() {

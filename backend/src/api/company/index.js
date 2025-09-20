@@ -2,7 +2,7 @@ import express from 'express';
 import { requireAuth, getUserId } from '../../middleware/clerk.js';
 import prisma from '../../models/prisma.js';
 import crypto from 'crypto';
-import { generateCustomLinkedInPrompt, getCustomLinkedInPrompt } from '../../services/ai/promptGeneration.js';
+import { generateCustomLinkedInPrompt, getCustomLinkedInPrompt, generateCustomHookPrompt, getCustomHookPrompt } from '../../services/ai/promptGeneration.js';
 
 const router = express.Router();
 
@@ -719,6 +719,149 @@ router.post('/prompt/regenerate', requireAuth, async (req, res) => {
   } catch (error) {
     console.error('Prompt regeneration error:', error);
     res.status(500).json({ error: 'Failed to regenerate custom prompt' });
+  }
+});
+
+// HOOK PROMPT MANAGEMENT ENDPOINTS
+// ===============================
+
+// Get current custom hook prompt
+router.get('/hook-prompt', requireAuth, async (req, res) => {
+  try {
+    const clerkId = getUserId(req);
+    
+    let user = await prisma.user.findUnique({
+      where: { clerkId },
+      include: { company: true }
+    });
+
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    let company = user.company;
+    if (!company) {
+      return res.status(404).json({ error: 'Company not found' });
+    }
+
+    // Get or generate custom hook prompt
+    const prompt = await getCustomHookPrompt(company.id);
+    const hasCustomPrompt = !!company.customHookPrompt;
+
+    res.json({
+      prompt,
+      lastGenerated: company.updatedAt,
+      lastModified: company.updatedAt,
+      isCustom: hasCustomPrompt,
+      companyName: company.name
+    });
+
+  } catch (error) {
+    console.error('Hook prompt fetch error:', error);
+    res.status(500).json({ error: 'Failed to get custom hook prompt' });
+  }
+});
+
+// Update custom hook prompt
+router.put('/hook-prompt', requireAuth, async (req, res) => {
+  try {
+    const clerkId = getUserId(req);
+    const { prompt } = req.body;
+
+    if (!prompt || typeof prompt !== 'string') {
+      return res.status(400).json({ error: 'Hook prompt content is required' });
+    }
+
+    if (prompt.length > 10000) {
+      return res.status(400).json({ error: 'Hook prompt too long (max 10,000 characters)' });
+    }
+
+    // Basic validation - ensure prompt has essential structure for hooks
+    const requiredElements = ['transcript', 'hooks', 'meeting'];
+    const missingElements = requiredElements.filter(element => 
+      !prompt.toLowerCase().includes(element.toLowerCase())
+    );
+    
+    if (missingElements.length > 0) {
+      return res.status(400).json({ 
+        error: `Hook prompt missing required elements: ${missingElements.join(', ')}`,
+        hint: 'Ensure your prompt includes placeholders for transcript, hooks, and meeting data'
+      });
+    }
+
+    let user = await prisma.user.findUnique({
+      where: { clerkId },
+      include: { company: true }
+    });
+
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    let company = user.company;
+    if (!company) {
+      return res.status(404).json({ error: 'Company not found' });
+    }
+
+    // Update the custom hook prompt
+    const updatedCompany = await prisma.company.update({
+      where: { id: company.id },
+      data: {
+        customHookPrompt: prompt
+      }
+    });
+
+    console.log(`📝 Custom hook prompt updated for ${updatedCompany.name} by user`);
+
+    res.json({
+      prompt,
+      lastModified: updatedCompany.updatedAt,
+      message: 'Custom hook prompt updated successfully',
+      companyName: updatedCompany.name
+    });
+
+  } catch (error) {
+    console.error('Hook prompt update error:', error);
+    res.status(500).json({ error: 'Failed to update custom hook prompt' });
+  }
+});
+
+// Regenerate custom hook prompt from brand voice data
+router.post('/hook-prompt/regenerate', requireAuth, async (req, res) => {
+  try {
+    const clerkId = getUserId(req);
+    
+    let user = await prisma.user.findUnique({
+      where: { clerkId },
+      include: { company: true }
+    });
+
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    let company = user.company;
+    if (!company) {
+      return res.status(404).json({ 
+        error: 'No company found. Please complete your company setup first.' 
+      });
+    }
+
+    console.log(`🔄 Regenerating custom hook prompt for ${company.name}`);
+
+    // Force regeneration of custom hook prompt
+    const newPrompt = await generateCustomHookPrompt(company.id);
+
+    res.json({
+      prompt: newPrompt,
+      lastGenerated: new Date().toISOString(),
+      message: 'Custom hook prompt regenerated successfully from brand voice data',
+      companyName: company.name
+    });
+
+  } catch (error) {
+    console.error('Hook prompt regeneration error:', error);
+    res.status(500).json({ error: 'Failed to regenerate custom hook prompt' });
   }
 });
 

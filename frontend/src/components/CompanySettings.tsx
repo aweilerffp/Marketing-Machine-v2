@@ -35,6 +35,18 @@ export const CompanySettings: React.FC<CompanySettingsProps> = ({ onBack }) => {
   } | null>(null);
   const [promptLoading, setPromptLoading] = useState(false);
   const [promptSaving, setPromptSaving] = useState(false);
+  
+  // Hook prompt management state
+  const [hookPromptData, setHookPromptData] = useState<{
+    prompt: string;
+    lastGenerated: string;
+    lastModified: string;
+    isCustom: boolean;
+    companyName: string;
+  } | null>(null);
+  const [hookPromptLoading, setHookPromptLoading] = useState(false);
+  const [hookPromptSaving, setHookPromptSaving] = useState(false);
+  
   const [showAdvanced, setShowAdvanced] = useState(false);
 
   // Get current company data
@@ -239,12 +251,69 @@ export const CompanySettings: React.FC<CompanySettingsProps> = ({ onBack }) => {
     }
   };
 
+  // Hook prompt functions
+  const loadHookPromptData = async () => {
+    setHookPromptLoading(true);
+    try {
+      const data = await companyApi.getHookPrompt();
+      setHookPromptData(data);
+    } catch (error) {
+      console.error('Error loading hook prompt:', error);
+      alert('Error loading hook prompt data. Please try again.');
+    } finally {
+      setHookPromptLoading(false);
+    }
+  };
+
+  const saveHookPrompt = async (newPrompt: string) => {
+    if (!hookPromptData) return;
+    setHookPromptSaving(true);
+    try {
+      const result = await companyApi.updateHookPrompt(newPrompt);
+      setHookPromptData(prev => prev ? {
+        ...prev,
+        prompt: result.prompt,
+        lastModified: result.lastModified
+      } : null);
+      alert('✅ Hook prompt updated successfully!');
+    } catch (error) {
+      console.error('Error saving hook prompt:', error);
+      alert('❌ Error saving hook prompt. Please try again.');
+    } finally {
+      setHookPromptSaving(false);
+    }
+  };
+
+  const regenerateHookPrompt = async () => {
+    if (!hookPromptData) return;
+    setHookPromptSaving(true);
+    try {
+      const result = await companyApi.regenerateHookPrompt();
+      setHookPromptData(prev => prev ? {
+        ...prev,
+        prompt: result.prompt,
+        lastGenerated: result.lastGenerated
+      } : null);
+      alert('✅ Hook prompt regenerated from brand voice!');
+    } catch (error) {
+      console.error('Error regenerating hook prompt:', error);
+      alert('❌ Error regenerating hook prompt. Please try again.');
+    } finally {
+      setHookPromptSaving(false);
+    }
+  };
+
   // Load prompt data when advanced tab becomes active
   useEffect(() => {
-    if (activeTab === 'advanced' && showAdvanced && !promptData) {
-      loadPromptData();
+    if (activeTab === 'advanced' && showAdvanced) {
+      if (!promptData) {
+        loadPromptData();
+      }
+      if (!hookPromptData) {
+        loadHookPromptData();
+      }
     }
-  }, [activeTab, showAdvanced, promptData]);
+  }, [activeTab, showAdvanced, promptData, hookPromptData]);
 
   if (isLoading) {
     return (
@@ -626,146 +695,228 @@ export const CompanySettings: React.FC<CompanySettingsProps> = ({ onBack }) => {
                 </div>
               </div>
 
-              {promptLoading ? (
-                <div className="flex items-center justify-center py-12">
-                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-                  <span className="ml-3 text-gray-600">Loading prompt data...</span>
-                </div>
-              ) : promptData ? (
-                <div className="space-y-6">
-                  {/* Show info if prompt data is stale */}
-                  {company && promptData.companyName !== company.name && (
-                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                      <div className="flex items-start">
-                        <svg className="w-5 h-5 text-blue-400 mt-0.5 mr-3" fill="currentColor" viewBox="0 0 20 20">
-                          <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
-                        </svg>
-                        <div>
-                          <h3 className="text-sm font-medium text-blue-800">Prompt May Be Outdated</h3>
-                          <p className="text-sm text-blue-700 mt-1">
-                            This prompt was generated for "{promptData.companyName}" but your current company is "{company.name}". 
-                            Click "Refresh Prompt Data" to load the latest prompt for your current brand voice.
-                          </p>
-                        </div>
+              {/* Hook Prompt Section */}
+              <div className="bg-white border-2 border-green-200 rounded-lg p-6">
+                <h3 className="text-lg font-medium text-gray-900 mb-4">🎯 Hook Generation Prompt</h3>
+                {hookPromptLoading ? (
+                  <div className="text-center py-4">
+                    <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-green-600 mx-auto"></div>
+                    <p className="text-gray-500 mt-2 text-sm">Loading hook prompt...</p>
+                  </div>
+                ) : hookPromptData ? (
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+                      <div className="bg-gray-50 p-3 rounded-lg">
+                        <h4 className="font-medium text-gray-900">Company</h4>
+                        <p className="text-gray-600 mt-1">{hookPromptData.companyName}</p>
+                      </div>
+                      <div className="bg-gray-50 p-3 rounded-lg">
+                        <h4 className="font-medium text-gray-900">Last Generated</h4>
+                        <p className="text-gray-600 mt-1">{new Date(hookPromptData.lastGenerated).toLocaleDateString()}</p>
+                      </div>
+                      <div className="bg-gray-50 p-3 rounded-lg">
+                        <h4 className="font-medium text-gray-900">Status</h4>
+                        <p className="text-gray-600 mt-1">{hookPromptData.isCustom ? 'Custom' : 'Auto-generated'}</p>
                       </div>
                     </div>
-                  )}
-                  <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-                    <div className="flex items-start">
-                      <svg className="w-5 h-5 text-yellow-400 mt-0.5 mr-3" fill="currentColor" viewBox="0 0 20 20">
-                        <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
-                      </svg>
-                      <div>
-                        <h3 className="text-sm font-medium text-yellow-800">Warning</h3>
-                        <p className="text-sm text-yellow-700 mt-1">
-                          Modifying this prompt can significantly impact your LinkedIn post quality. Only proceed if you understand prompt engineering.
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
-                    <div className="bg-gray-50 p-4 rounded-lg">
-                      <h4 className="font-medium text-gray-900">Company</h4>
-                      <p className="text-gray-600 mt-1">{promptData.companyName}</p>
-                    </div>
-                    <div className="bg-gray-50 p-4 rounded-lg">
-                      <h4 className="font-medium text-gray-900">Last Generated</h4>
-                      <p className="text-gray-600 mt-1">{new Date(promptData.lastGenerated).toLocaleDateString()}</p>
-                    </div>
-                    <div className="bg-gray-50 p-4 rounded-lg">
-                      <h4 className="font-medium text-gray-900">Status</h4>
-                      <p className="text-gray-600 mt-1">{promptData.isCustom ? 'Custom' : 'Auto-generated'}</p>
-                    </div>
-                  </div>
-
-                  <div className="flex justify-between items-center">
-                    <h3 className="text-lg font-medium text-gray-900">Current Prompt</h3>
-                    <div className="flex space-x-2">
+                    
+                    <div className="flex justify-between items-center">
+                      <h4 className="text-md font-medium text-gray-900">Hook Prompt Content</h4>
                       <Button 
-                        onClick={regeneratePrompt}
-                        disabled={promptSaving}
+                        onClick={regenerateHookPrompt}
+                        disabled={hookPromptSaving}
                         variant="outline"
+                        size="sm"
                         className="flex items-center"
                       >
-                        {promptSaving ? (
-                          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600 mr-2"></div>
+                        {hookPromptSaving ? (
+                          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-green-600 mr-2"></div>
                         ) : (
                           <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                           </svg>
                         )}
-                        Regenerate from Brand Voice
+                        Regenerate
+                      </Button>
+                    </div>
+                    
+                    <textarea
+                      value={hookPromptData.prompt}
+                      onChange={(e) => setHookPromptData(prev => prev ? {...prev, prompt: e.target.value} : null)}
+                      rows={8}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500 font-mono text-sm"
+                      placeholder="Loading hook prompt..."
+                    />
+                    
+                    <div className="flex justify-end">
+                      <Button 
+                        onClick={() => saveHookPrompt(hookPromptData.prompt)}
+                        disabled={hookPromptSaving}
+                        className="flex items-center bg-green-600 hover:bg-green-700"
+                      >
+                        {hookPromptSaving ? (
+                          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                        ) : (
+                          <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                          </svg>
+                        )}
+                        Save Hook Prompt
                       </Button>
                     </div>
                   </div>
+                ) : (
+                  <div className="text-center py-4">
+                    <p className="text-gray-500 text-sm">Failed to load hook prompt</p>
+                    <Button onClick={loadHookPromptData} className="mt-2" size="sm">
+                      Retry Loading
+                    </Button>
+                  </div>
+                )}
+              </div>
 
-                  <div className="space-y-4">
-                    <div>
-                      <Label htmlFor="promptContent">
-                        Prompt Content ({promptData.prompt.length} characters)
-                      </Label>
-                      <textarea
-                        id="promptContent"
-                        value={promptData.prompt}
-                        onChange={(e) => setPromptData(prev => prev ? {...prev, prompt: e.target.value} : null)}
-                        rows={20}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono text-sm"
-                        placeholder="Loading prompt..."
-                      />
-                      <p className="text-xs text-gray-500 mt-1">
-                        Ensure your prompt includes placeholders for: Hook, Content Pillar, and Brand Voice data
-                      </p>
-                    </div>
-
-                    <div className="bg-gray-50 rounded-lg p-4">
-                      <h4 className="text-sm font-medium text-gray-900 mb-2">Variable Substitutions</h4>
-                      <div className="grid grid-cols-2 gap-4 text-xs">
-                        <div>
-                          <span className="font-mono bg-gray-200 px-1 rounded">{`{HOOK_LIST}`}</span> → Meeting insight/hook text
+              {/* LinkedIn Post Prompt Section */}
+              <div className="bg-white border-2 border-blue-200 rounded-lg p-6">
+                <h3 className="text-lg font-medium text-gray-900 mb-4">📝 LinkedIn Post Prompt</h3>
+                {promptLoading ? (
+                  <div className="flex items-center justify-center py-12">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                    <span className="ml-3 text-gray-600">Loading prompt data...</span>
+                  </div>
+                ) : promptData ? (
+                  <div className="space-y-6">
+                    {/* Show info if prompt data is stale */}
+                    {company && promptData.companyName !== company.name && (
+                      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                        <div className="flex items-start">
+                          <svg className="w-5 h-5 text-blue-400 mt-0.5 mr-3" fill="currentColor" viewBox="0 0 20 20">
+                            <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+                          </svg>
+                          <div>
+                            <h3 className="text-sm font-medium text-blue-800">Prompt May Be Outdated</h3>
+                            <p className="text-sm text-blue-700 mt-1">
+                              This prompt was generated for "{promptData.companyName}" but your current company is "{company.name}". 
+                              Click "Refresh Prompt Data" to load the latest prompt for your current brand voice.
+                            </p>
+                          </div>
                         </div>
+                      </div>
+                    )}
+                    <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                      <div className="flex items-start">
+                        <svg className="w-5 h-5 text-yellow-400 mt-0.5 mr-3" fill="currentColor" viewBox="0 0 20 20">
+                          <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                        </svg>
                         <div>
-                          <span className="font-mono bg-gray-200 px-1 rounded">Content Pillar:</span> → Post category
-                        </div>
-                        <div>
-                          <span className="font-mono bg-gray-200 px-1 rounded">Brand Voice:</span> → Company brand voice data
-                        </div>
-                        <div>
-                          <span className="font-mono bg-gray-200 px-1 rounded">Meeting Context:</span> → Meeting transcript/summary
+                          <h3 className="text-sm font-medium text-yellow-800">Warning</h3>
+                          <p className="text-sm text-yellow-700 mt-1">
+                            Modifying this prompt can significantly impact your LinkedIn post quality. Only proceed if you understand prompt engineering.
+                          </p>
                         </div>
                       </div>
                     </div>
-                  </div>
-                </div>
-              ) : (
-                <div className="text-center py-8">
-                  <p className="text-gray-500">Failed to load prompt data. Please try again.</p>
-                  <Button onClick={loadPromptData} className="mt-4">
-                    Retry Loading
-                  </Button>
-                </div>
-              )}
 
-              {promptData && (
-                <div className="pt-6 border-t border-gray-200">
-                  <div className="flex justify-end space-x-3">
-                    <Button 
-                      onClick={() => savePrompt(promptData.prompt)}
-                      disabled={promptSaving}
-                      className="flex items-center"
-                    >
-                      {promptSaving ? (
-                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                      ) : (
-                        <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                        </svg>
-                      )}
-                      Save Prompt Changes
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+                      <div className="bg-gray-50 p-4 rounded-lg">
+                        <h4 className="font-medium text-gray-900">Company</h4>
+                        <p className="text-gray-600 mt-1">{promptData.companyName}</p>
+                      </div>
+                      <div className="bg-gray-50 p-4 rounded-lg">
+                        <h4 className="font-medium text-gray-900">Last Generated</h4>
+                        <p className="text-gray-600 mt-1">{new Date(promptData.lastGenerated).toLocaleDateString()}</p>
+                      </div>
+                      <div className="bg-gray-50 p-4 rounded-lg">
+                        <h4 className="font-medium text-gray-900">Status</h4>
+                        <p className="text-gray-600 mt-1">{promptData.isCustom ? 'Custom' : 'Auto-generated'}</p>
+                      </div>
+                    </div>
+
+                    <div className="flex justify-between items-center">
+                      <h3 className="text-lg font-medium text-gray-900">Current Prompt</h3>
+                      <div className="flex space-x-2">
+                        <Button 
+                          onClick={regeneratePrompt}
+                          disabled={promptSaving}
+                          variant="outline"
+                          className="flex items-center"
+                        >
+                          {promptSaving ? (
+                            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600 mr-2"></div>
+                          ) : (
+                            <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                            </svg>
+                          )}
+                          Regenerate from Brand Voice
+                        </Button>
+                      </div>
+                    </div>
+
+                    <div className="space-y-4">
+                      <div>
+                        <Label htmlFor="promptContent">
+                          Prompt Content ({promptData.prompt.length} characters)
+                        </Label>
+                        <textarea
+                          id="promptContent"
+                          value={promptData.prompt}
+                          onChange={(e) => setPromptData(prev => prev ? {...prev, prompt: e.target.value} : null)}
+                          rows={20}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono text-sm"
+                          placeholder="Loading prompt..."
+                        />
+                        <p className="text-xs text-gray-500 mt-1">
+                          Ensure your prompt includes placeholders for: Hook, Content Pillar, and Brand Voice data
+                        </p>
+                      </div>
+
+                      <div className="bg-gray-50 rounded-lg p-4">
+                        <h4 className="text-sm font-medium text-gray-900 mb-2">Variable Substitutions</h4>
+                        <div className="grid grid-cols-2 gap-4 text-xs">
+                          <div>
+                            <span className="font-mono bg-gray-200 px-1 rounded">{`{HOOK_LIST}`}</span> → Meeting insight/hook text
+                          </div>
+                          <div>
+                            <span className="font-mono bg-gray-200 px-1 rounded">Content Pillar:</span> → Post category
+                          </div>
+                          <div>
+                            <span className="font-mono bg-gray-200 px-1 rounded">Brand Voice:</span> → Company brand voice data
+                          </div>
+                          <div>
+                            <span className="font-mono bg-gray-200 px-1 rounded">Meeting Context:</span> → Meeting transcript/summary
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="pt-6 border-t border-gray-200">
+                      <div className="flex justify-end space-x-3">
+                        <Button 
+                          onClick={() => savePrompt(promptData.prompt)}
+                          disabled={promptSaving}
+                          className="flex items-center"
+                        >
+                          {promptSaving ? (
+                            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                          ) : (
+                            <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                            </svg>
+                          )}
+                          Save LinkedIn Prompt
+                        </Button>
+                      </div>
+                    </div>
+                </div>
+                ) : (
+                  <div className="text-center py-8">
+                    <p className="text-gray-500">Failed to load LinkedIn prompt data. Please try again.</p>
+                    <Button onClick={loadPromptData} className="mt-4">
+                      Retry Loading
                     </Button>
                   </div>
-                </div>
-              )}
+                )}
+              </div>
             </div>
           </TabsContent>
         )}
