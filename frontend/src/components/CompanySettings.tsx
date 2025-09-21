@@ -223,9 +223,13 @@ export const CompanySettings: React.FC<CompanySettingsProps> = ({ onBack }) => {
         lastModified: result.lastModified
       } : null);
       alert('✅ Prompt updated successfully!');
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error saving prompt:', error);
-      alert('❌ Error saving prompt. Please try again.');
+      const backendMessage = error?.response?.data?.error;
+      const message = typeof backendMessage === 'string' 
+        ? backendMessage 
+        : 'Error saving prompt. Please try again.';
+      alert(`❌ ${message}`);
     } finally {
       setPromptSaving(false);
     }

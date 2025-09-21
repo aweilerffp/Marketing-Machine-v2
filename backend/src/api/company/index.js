@@ -683,13 +683,26 @@ router.put('/prompt', requireAuth, async (req, res) => {
       return res.status(400).json({ error: 'Prompt too long (max 10,000 characters)' });
     }
 
-    // Basic validation - ensure prompt has essential structure
-    const requiredElements = ['Hook:', 'Content Pillar:', 'Brand Voice'];
-    const missingElements = requiredElements.filter(element => !prompt.includes(element));
-    
+    // Basic validation - ensure prompt has essential structure (case-insensitive, flexible placeholders)
+    const requiredElementChecks = [
+      {
+        label: 'Hook placeholder (e.g. "Hook:" or "{HOOK_LIST}")',
+        patterns: ['hook:', 'hooks:', 'hook -', '{hook']
+      },
+      {
+        label: 'Brand voice placeholder (e.g. "Brand Voice:" or "{BRAND_VOICE_DATA}")',
+        patterns: ['brand voice', '{brand_voice']
+      }
+    ];
+
+    const normalizedPrompt = prompt.toLowerCase();
+    const missingElements = requiredElementChecks.filter(({ patterns }) =>
+      !patterns.some(pattern => normalizedPrompt.includes(pattern))
+    );
+
     if (missingElements.length > 0) {
       return res.status(400).json({ 
-        error: `Prompt missing required elements: ${missingElements.join(', ')}`,
+        error: `Prompt missing required elements: ${missingElements.map(({ label }) => label).join(', ')}`,
         hint: 'Ensure your prompt includes placeholders for Hook, Content Pillar, and Brand Voice data'
       });
     }

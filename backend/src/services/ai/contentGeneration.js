@@ -6,6 +6,15 @@ import prisma from '../../models/prisma.js';
 // Lazy initialization to ensure environment variables are loaded
 let anthropic = null;
 
+const buildPlainTextPost = (text) => {
+  const cleaned = typeof text === 'string' ? text.trim() : '';
+  return {
+    post: cleaned,
+    reasoning: null,
+    estimatedCharacterCount: cleaned.length
+  };
+};
+
 const getAnthropicClient = () => {
   if (!anthropic && process.env.ANTHROPIC_API_KEY && process.env.ANTHROPIC_API_KEY !== 'your_anthropic_api_key_here') {
     anthropic = new Anthropic({
@@ -149,9 +158,10 @@ Format your response as JSON:
       console.log('📱 Generated LinkedIn post using AI');
       return result;
     } catch (parseError) {
+      console.warn('⚠️ Falling back to plain-text post output for JSON parse failure');
       console.error('❌ Failed to parse AI response as JSON:', parseError);
       console.error('📄 Raw AI response:', response);
-      throw new Error(`AI response parsing failed: ${parseError.message}`);
+      return buildPlainTextPost(response);
     }
 
   } catch (error) {
@@ -429,21 +439,27 @@ Return clean JSON:
         console.log('📱 Generated enhanced LinkedIn post using AI');
         return result;
       } catch (secondParseError) {
+        console.warn('⚠️ Falling back to plain-text post output for enhanced JSON parse failure');
         console.error('❌ Still failed after JSON fixes:', secondParseError);
         
         // Last resort: extract post content with regex if it's a simple format
         const simplePostMatch = responseText.match(/"post":\s*"([^"]*(?:\\.[^"]*)*)"/);
         if (simplePostMatch) {
           console.log('🔧 Extracted post content with regex fallback');
-          return { post: simplePostMatch[1].replace(/\\"/g, '"') };
+          return {
+            post: simplePostMatch[1].replace(/\\"/g, '"'),
+            reasoning: null,
+            estimatedCharacterCount: simplePostMatch[1].length
+          };
         }
-        
-        throw new Error(`Enhanced AI response parsing failed even after fixes: ${secondParseError.message}`);
+
+        return buildPlainTextPost(responseText || response);
       }
     } catch (parseError) {
+      console.warn('⚠️ Enhanced response parse failed, returning plain-text fallback');
       console.error('❌ Failed to parse enhanced AI response as JSON:', parseError);
       console.error('📄 Raw AI response:', response);
-      throw new Error(`Enhanced AI response parsing failed: ${parseError.message}`);
+      return buildPlainTextPost(response);
     }
 
   } catch (error) {
