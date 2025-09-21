@@ -1,10 +1,11 @@
+// Load environment variables FIRST - before any other imports
 import dotenv from 'dotenv';
+dotenv.config(); // Load .env first as base
+dotenv.config({ path: '.env.local', override: true }); // Override with .env.local if it exists
+
 import { PrismaClient } from '@prisma/client';
 import { generateHooks, generateImage } from '../../ai/index.js';
 import { generateEnhancedLinkedInPost } from '../../ai/contentGeneration.js';
-
-// Ensure environment variables are loaded in queue processor context
-dotenv.config();
 
 // Create Prisma client with explicit DATABASE_URL for queue worker context
 const prisma = new PrismaClient({
@@ -44,6 +45,9 @@ export const processTranscript = async (job) => {
 
   try {
     console.log(`🔄 Processing transcript for meeting: ${sessionId}`);
+    console.log(`🔍 Queue processor environment check:`);
+    console.log(`   ANTHROPIC_API_KEY: ${process.env.ANTHROPIC_API_KEY ? process.env.ANTHROPIC_API_KEY.substring(0, 20) + '...' : 'NOT SET'}`);
+    console.log(`   CLAUDE_MODEL: ${process.env.CLAUDE_MODEL || 'NOT SET'}`);
     console.log(`🗄️  DATABASE_URL: ${process.env.DATABASE_URL}`);
     console.log(`📝 Meeting title: ${title}`);
     console.log(`📊 Transcript length: ${transcript?.length || 0} characters`);

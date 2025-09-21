@@ -1,8 +1,12 @@
+// Load environment variables FIRST - before any other imports
+import dotenv from 'dotenv';
+dotenv.config(); // Load .env first as base
+dotenv.config({ path: '.env.local', override: true }); // Override with .env.local if it exists
+
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import morgan from 'morgan';
-import dotenv from 'dotenv';
 import { clerkMiddleware, requireAuth } from '@clerk/express';
 import { PrismaClient } from '@prisma/client';
 
@@ -15,10 +19,6 @@ import authRouter from './api/auth/index.js';
 import companyRouter from './api/company/index.js';
 import contentRouter from './api/content/index.js';
 import linkedinRouter from './api/linkedin/index.js';
-
-// Load environment variables - prioritize .env.local for development
-dotenv.config(); // Load .env first as base
-dotenv.config({ path: '.env.local', override: true }); // Override with .env.local if it exists
 
 // Import security validation
 import { validateEnvironmentKeys, apiKeySecurityMiddleware } from './middleware/apiKeyValidation.js';

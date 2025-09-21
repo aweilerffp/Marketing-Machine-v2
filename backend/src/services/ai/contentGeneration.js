@@ -3,10 +3,17 @@ import { processBrandVoice, formatBrandVoiceForPrompt } from './brandVoiceProces
 import { getCustomLinkedInPrompt } from './promptGeneration.js';
 import prisma from '../../models/prisma.js';
 
-// Initialize Anthropic client
-const anthropic = process.env.ANTHROPIC_API_KEY ? new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY,
-}) : null;
+// Lazy initialization to ensure environment variables are loaded
+let anthropic = null;
+
+const getAnthropicClient = () => {
+  if (!anthropic && process.env.ANTHROPIC_API_KEY && process.env.ANTHROPIC_API_KEY !== 'your_anthropic_api_key_here') {
+    anthropic = new Anthropic({
+      apiKey: process.env.ANTHROPIC_API_KEY,
+    });
+  }
+  return anthropic;
+};
 
 /**
  * Generate content hooks from meeting transcript using AI
@@ -17,7 +24,8 @@ const anthropic = process.env.ANTHROPIC_API_KEY ? new Anthropic({
  */
 export async function generateContentHooks(transcript, brandVoiceData, contentPillars = []) {
   // If no Anthropic key, throw error - no fallbacks
-  if (!anthropic || !process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_API_KEY === 'your_anthropic_api_key_here') {
+  const client = getAnthropicClient();
+  if (!client) {
     throw new Error('Anthropic API key not configured - cannot generate content hooks');
   }
 
@@ -48,8 +56,8 @@ Each hook should:
 Format: Return only the hooks, one per line, without numbering or bullets.
 `;
 
-    const completion = await anthropic.messages.create({
-      model: process.env.CLAUDE_MODEL || 'claude-3-7-sonnet-latest',
+    const completion = await client.messages.create({
+      model: process.env.CLAUDE_MODEL || 'claude-3-5-sonnet-20241022',
       max_tokens: 1500,
       temperature: parseFloat(process.env.CLAUDE_TEMPERATURE) || 0.7,
       messages: [
@@ -84,7 +92,8 @@ Format: Return only the hooks, one per line, without numbering or bullets.
  */
 export async function generateLinkedInPost(hook, brandVoiceData, contentPillars = []) {
   // If no Anthropic key, throw error - no fallbacks
-  if (!anthropic || !process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_API_KEY === 'your_anthropic_api_key_here') {
+  const client = getAnthropicClient();
+  if (!client) {
     throw new Error('Anthropic API key not configured - cannot generate LinkedIn post');
   }
 
@@ -117,8 +126,8 @@ Format your response as JSON:
 }
 `;
 
-    const completion = await anthropic.messages.create({
-      model: process.env.CLAUDE_MODEL || 'claude-3-7-sonnet-latest',
+    const completion = await client.messages.create({
+      model: process.env.CLAUDE_MODEL || 'claude-3-5-sonnet-20241022',
       messages: [
         { role: 'user', content: `You are a LinkedIn content creator that writes engaging posts for business professionals. Always respond with valid JSON.\n\n${prompt}` }
       ],
@@ -213,7 +222,8 @@ What's the biggest listing challenge you're facing right now? 👇`,
  */
 export async function rewriteContent(originalContent, instructions, brandVoiceData) {
   // If no Anthropic key, throw error - no fallbacks
-  if (!anthropic || !process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_API_KEY === 'your_anthropic_api_key_here') {
+  const client = getAnthropicClient();
+  if (!client) {
     throw new Error('Anthropic API key not configured - cannot rewrite content');
   }
 
@@ -237,8 +247,8 @@ Please rewrite the content following the instructions while maintaining the comp
 Return only the rewritten content, no explanations or additional text.
 `;
 
-    const completion = await anthropic.messages.create({
-      model: process.env.CLAUDE_MODEL || 'claude-3-7-sonnet-latest',
+    const completion = await client.messages.create({
+      model: process.env.CLAUDE_MODEL || 'claude-3-5-sonnet-20241022',
       messages: [
         { role: 'user', content: `You are a LinkedIn content editor that rewrites posts based on specific instructions while maintaining brand voice.\n\n${prompt}` }
       ],
@@ -266,7 +276,8 @@ Return only the rewritten content, no explanations or additional text.
  */
 export async function generateEnhancedLinkedInPost(hookText, pillar, brandVoiceData, meetingSummary = '', hookContext = null, companyId = null) {
   // If no Anthropic key, throw error - no fallbacks
-  if (!anthropic || !process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_API_KEY === 'your_anthropic_api_key_here') {
+  const client = getAnthropicClient();
+  if (!client) {
     throw new Error('Anthropic API key not configured - cannot generate enhanced LinkedIn post');
   }
 
@@ -368,8 +379,8 @@ Return clean JSON:
 }`;
     }
 
-    const completion = await anthropic.messages.create({
-      model: process.env.CLAUDE_MODEL || 'claude-3-7-sonnet-latest',
+    const completion = await client.messages.create({
+      model: process.env.CLAUDE_MODEL || 'claude-3-5-sonnet-20241022',
       messages: [
         { 
           role: 'user', 

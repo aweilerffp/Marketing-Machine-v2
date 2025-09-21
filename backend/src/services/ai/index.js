@@ -2,14 +2,27 @@ import Anthropic from '@anthropic-ai/sdk';
 import OpenAI from 'openai';
 import { processBrandVoice, formatBrandVoiceForPrompt } from './brandVoiceProcessor.js';
 
-const anthropic = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY,
-});
+// Lazy initialization to ensure environment variables are loaded
+let anthropic = null;
+let openai = null;
 
-// OpenAI client for image generation only
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+const getAnthropicClient = () => {
+  if (!anthropic) {
+    anthropic = new Anthropic({
+      apiKey: process.env.ANTHROPIC_API_KEY,
+    });
+  }
+  return anthropic;
+};
+
+const getOpenAIClient = () => {
+  if (!openai) {
+    openai = new OpenAI({
+      apiKey: process.env.OPENAI_API_KEY,
+    });
+  }
+  return openai;
+};
 
 // Helper function to generate industry-specific keywords
 const generateIndustryKeywords = (industry) => {
@@ -113,8 +126,8 @@ ${transcript}
     const estimatedTokens = Math.ceil(hookGenerationPrompt.length / 4); // Rough estimate: 4 chars per token
     console.log(`📊 Estimated input tokens: ~${estimatedTokens}`);
     
-    const completion = await anthropic.messages.create({
-      model: process.env.CLAUDE_MODEL || 'claude-3-7-sonnet-latest',
+    const completion = await getAnthropicClient().messages.create({
+      model: process.env.CLAUDE_MODEL || 'claude-3-5-sonnet-20241022',
       max_tokens: parseInt(process.env.CLAUDE_MAX_TOKENS) || 20000,
       temperature: parseFloat(process.env.CLAUDE_TEMPERATURE) || 0.7,
       messages: [
@@ -187,8 +200,8 @@ ${JSON.stringify(brandVoice, null, 2)}
 [Your existing post generation instructions]
 `;
 
-    const completion = await anthropic.messages.create({
-      model: process.env.CLAUDE_MODEL || 'claude-3-7-sonnet-latest',
+    const completion = await getAnthropicClient().messages.create({
+      model: process.env.CLAUDE_MODEL || 'claude-3-5-sonnet-20241022',
       max_tokens: 1000,
       temperature: parseFloat(process.env.CLAUDE_TEMPERATURE) || 0.7,
       messages: [
@@ -241,7 +254,7 @@ Style requirements:
 The image should be visually appealing and complement a LinkedIn post about this topic.
 `;
 
-    const response = await openai.images.generate({
+    const response = await getOpenAIClient().images.generate({
       model: "dall-e-3",
       prompt: imagePrompt.trim(),
       n: 1,

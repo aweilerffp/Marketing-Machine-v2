@@ -2,10 +2,17 @@ import Anthropic from '@anthropic-ai/sdk';
 import prisma from '../../models/prisma.js';
 import { processBrandVoice } from './brandVoiceProcessor.js';
 
-// Initialize Anthropic client
-const anthropic = process.env.ANTHROPIC_API_KEY ? new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY,
-}) : null;
+// Lazy initialization to ensure environment variables are loaded
+let anthropic = null;
+
+const getAnthropicClient = () => {
+  if (!anthropic && process.env.ANTHROPIC_API_KEY && process.env.ANTHROPIC_API_KEY !== 'your_anthropic_api_key_here') {
+    anthropic = new Anthropic({
+      apiKey: process.env.ANTHROPIC_API_KEY,
+    });
+  }
+  return anthropic;
+};
 
 /**
  * Auto-detect industry and ICP from brand voice data using AI and web search
@@ -14,7 +21,8 @@ const anthropic = process.env.ANTHROPIC_API_KEY ? new Anthropic({
  */
 export async function autoDetectIndustryAndICP(brandVoiceData) {
   // If no Anthropic key, return basic processed data
-  if (!anthropic || !process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_API_KEY === 'your_anthropic_api_key_here') {
+  const client = getAnthropicClient();
+  if (!client) {
     console.log('🤖 Using basic industry/ICP detection - no Anthropic key configured');
     return getBasicIndustryICP(brandVoiceData);
   }
@@ -50,8 +58,8 @@ Return JSON with:
 }
 `;
 
-    const completion = await anthropic.messages.create({
-      model: process.env.CLAUDE_MODEL || 'claude-3-7-sonnet-latest',
+    const completion = await client.messages.create({
+      model: process.env.CLAUDE_MODEL || 'claude-3-5-sonnet-20241022',
       max_tokens: 800,
       temperature: parseFloat(process.env.CLAUDE_TEMPERATURE) || 0.7,
       messages: [
@@ -211,8 +219,8 @@ INSTRUCTIONS:
 Return the complete customized prompt ready to use for LinkedIn post generation.
 `;
 
-    const completion = await anthropic.messages.create({
-      model: process.env.CLAUDE_MODEL || 'claude-3-7-sonnet-latest',
+    const completion = await client.messages.create({
+      model: process.env.CLAUDE_MODEL || 'claude-3-5-sonnet-20241022',
       max_tokens: 2000,
       temperature: parseFloat(process.env.CLAUDE_TEMPERATURE) || 0.7,
       messages: [
@@ -350,8 +358,8 @@ INSTRUCTIONS:
 Return the complete customized hook prompt ready to use for hook generation.
 `;
 
-    const completion = await anthropic.messages.create({
-      model: process.env.CLAUDE_MODEL || 'claude-3-7-sonnet-latest',
+    const completion = await client.messages.create({
+      model: process.env.CLAUDE_MODEL || 'claude-3-5-sonnet-20241022',
       max_tokens: 1500,
       temperature: parseFloat(process.env.CLAUDE_TEMPERATURE) || 0.7,
       messages: [
