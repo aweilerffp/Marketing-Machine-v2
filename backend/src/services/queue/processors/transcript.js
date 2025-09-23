@@ -5,7 +5,7 @@ dotenv.config({ path: '.env.local', override: true }); // Override with .env.loc
 
 import { PrismaClient } from '@prisma/client';
 import { generateHooks, generateImage } from '../../ai/index.js';
-import { generateEnhancedLinkedInPost } from '../../ai/contentGeneration.js';
+import { generateEnhancedLinkedInPost, sanitizePostText } from '../../ai/contentGeneration.js';
 
 // Create Prisma client with explicit DATABASE_URL for queue worker context
 const prisma = new PrismaClient({
@@ -223,7 +223,8 @@ export const processTranscript = async (job) => {
 
         // Generate accompanying image
         const brandColors = brandVoice.colors || [];
-        const imageResult = await generateImage(hookText, brandColors, 'professional');
+        const aiImagePrompt = typeof linkedinPost === 'object' ? linkedinPost.imagePrompt : null;
+        const imageResult = await generateImage(hookText, brandColors, 'professional', aiImagePrompt);
 
         // Extract post content from AI response (handle various response formats)
         let postContent;
@@ -238,14 +239,18 @@ export const processTranscript = async (job) => {
         } else {
           postContent = JSON.stringify(linkedinPost);
         }
-        
+
+        // Strip any lingering image prompt lines that could confuse reviewers
+        postContent = sanitizePostText(
+          postContent.replace(/\n?\s*(?:Image\s*Prompt|Image\s*prompt|Suggested\s*image)\s*[:\-].*$/i, '')
+        );
+
         // Create content post record
         await prisma.contentPost.create({
           data: {
             hookId: contentHook.id,
             content: postContent,
             imageUrl: imageResult.url,
-            imagePrompt: imageResult.prompt,
             status: 'PENDING' // Will go to approval queue
           }
         });

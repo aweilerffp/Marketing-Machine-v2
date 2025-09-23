@@ -104,7 +104,6 @@ router.post('/generate', requireAuth, async (req, res) => {
         data: {
           hookId: contentHook.id,
           content: linkedinPost.content,
-          imagePrompt: linkedinPost.imagePrompt,
           status: 'PENDING' // Goes to approval queue
         }
       });
@@ -113,7 +112,6 @@ router.post('/generate', requireAuth, async (req, res) => {
         id: contentPost.id,
         hook: hookText,
         content: linkedinPost.content,
-        imagePrompt: linkedinPost.imagePrompt,
         status: contentPost.status,
         createdAt: contentPost.createdAt
       });

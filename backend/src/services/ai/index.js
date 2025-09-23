@@ -230,7 +230,7 @@ ${JSON.stringify(brandVoice, null, 2)}
   }
 };
 
-export const generateImage = async (hook, brandColors = [], style = 'professional') => {
+export const generateImage = async (hook, brandColors = [], style = 'professional', promptOverride = null) => {
   try {
     console.log('🎨 Generating image with DALL-E');
     
@@ -238,8 +238,10 @@ export const generateImage = async (hook, brandColors = [], style = 'professiona
     const colorPrompt = brandColors.length > 0 
       ? `using brand colors: ${brandColors.join(', ')}`
       : 'using professional color palette';
-    
-    const imagePrompt = `
+
+    const trimmedOverride = typeof promptOverride === 'string' ? promptOverride.trim() : '';
+
+    const imagePrompt = trimmedOverride || `
 Create a ${style} conceptual illustration representing: "${hook}"
 
 Style requirements:

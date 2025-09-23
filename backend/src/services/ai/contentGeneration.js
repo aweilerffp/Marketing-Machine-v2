@@ -225,13 +225,30 @@ const buildPostFromLooseJson = (text) => {
   };
 };
 
+export const sanitizePostText = (text) => {
+  if (typeof text !== 'string') {
+    return '';
+  }
+
+  let cleaned = text.trim();
+
+  // Remove trailing code fences that may slip through
+  cleaned = cleaned.replace(/```+\s*$/g, '').trim();
+
+  // Remove trailing brackets/braces/parentheses left from partial JSON
+  cleaned = cleaned.replace(/[\[\]\{\}\(\)]+$/g, '').trimEnd();
+
+  return cleaned;
+};
+
 const normalizePostResponse = (rawResponse) => {
   const stripped = stripCodeFences(rawResponse || '');
   let imagePrompt = null;
   let reasoning = null;
   let workingText = stripped;
 
-  const imagePromptMatch = workingText.match(/(?:^|\n)(?:Image\s*Prompt|Image prompt|Suggested image):\s*(.+)$/i);
+  const imagePromptRegex = /(?:^|\n)(?:Image\s*Prompt|Image\s*prompt|Suggested\s*image)\s*[:\-]\s*(.+)$/i;
+  const imagePromptMatch = workingText.match(imagePromptRegex);
   if (imagePromptMatch) {
     imagePrompt = imagePromptMatch[1].trim();
     workingText = workingText.replace(imagePromptMatch[0], '').trim();
@@ -259,7 +276,7 @@ const normalizePostResponse = (rawResponse) => {
       }
 
       if (postText) {
-        const cleanedPost = postText.trim();
+        const cleanedPost = sanitizePostText(postText);
         return {
           post: cleanedPost,
           reasoning,
@@ -271,7 +288,7 @@ const normalizePostResponse = (rawResponse) => {
       console.warn('⚠️ Could not parse AI response as JSON:', jsonError);
       const looseResult = buildPostFromLooseJson(trimmed);
       if (looseResult?.post) {
-        const cleanedPost = looseResult.post.trim();
+        const cleanedPost = sanitizePostText(looseResult.post);
         return {
           post: cleanedPost,
           reasoning: looseResult.reasoning || reasoning,
@@ -283,9 +300,11 @@ const normalizePostResponse = (rawResponse) => {
   }
 
   const plainResult = buildPlainTextPost(trimmed);
+  const sanitizedPost = sanitizePostText(plainResult.post);
   return {
-    ...plainResult,
+    post: sanitizedPost,
     reasoning: reasoning ?? plainResult.reasoning,
+    estimatedCharacterCount: sanitizedPost.length,
     imagePrompt: imagePrompt || null
   };
 };
@@ -429,7 +448,7 @@ Image Prompt: <one-sentence visual description that complements the post>
     console.log('📱 Generated LinkedIn post using AI');
     return {
       content: normalized.post,
-      imagePrompt: normalized.imagePrompt || 'Professional LinkedIn-style visual reinforcing the post topic'
+      imagePrompt: normalized.imagePrompt || null
     };
 
   } catch (error) {
