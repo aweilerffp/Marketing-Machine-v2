@@ -3,6 +3,13 @@ import { useState } from 'react';
 import Navbar from '../components/layout/Navbar';
 import { useContentQueue, useUpdatePostStatus, useUpdatePostContent } from '../hooks/useContent';
 
+const getDefaultScheduledTime = () => {
+  const tomorrowMorning = new Date();
+  tomorrowMorning.setDate(tomorrowMorning.getDate() + 1);
+  tomorrowMorning.setHours(9, 0, 0, 0);
+  return tomorrowMorning.toISOString();
+};
+
 export default function ApprovalQueue() {
   const [editingPost, setEditingPost] = useState<string | null>(null);
   const [editContent, setEditContent] = useState('');
@@ -15,11 +22,13 @@ export default function ApprovalQueue() {
   const updateContentMutation = useUpdatePostContent();
 
   const handleApprove = async (postId: string) => {
+    const scheduledFor = getDefaultScheduledTime();
+
     try {
       await updateStatusMutation.mutateAsync({ 
         postId, 
-        status: 'APPROVED',
-        // You can add scheduledFor logic here later
+        status: 'SCHEDULED',
+        scheduledFor,
       });
     } catch (error) {
       console.error('Failed to approve post:', error);
