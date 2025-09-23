@@ -262,14 +262,20 @@ The image should be visually appealing and complement a LinkedIn post about this
       n: 1,
       size: "1024x1024",
       quality: "standard",
-      style: "vivid"
+      style: "vivid",
+      response_format: "b64_json"
     });
 
-    const imageUrl = response.data[0].url;
+    const imageData = response.data?.[0]?.b64_json;
+    if (!imageData) {
+      throw new Error('Missing image data in OpenAI response');
+    }
+
+    const dataUrl = `data:image/png;base64,${imageData}`;
     
     console.log(`✅ Generated image successfully`);
     return {
-      url: imageUrl,
+      url: dataUrl,
       prompt: imagePrompt.trim()
     };
 

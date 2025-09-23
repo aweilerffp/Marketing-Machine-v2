@@ -226,6 +226,10 @@ export const processTranscript = async (job) => {
         const aiImagePrompt = typeof linkedinPost === 'object' ? linkedinPost.imagePrompt : null;
         const imageResult = await generateImage(hookText, brandColors, 'professional', aiImagePrompt);
 
+        if (!imageResult?.url) {
+          throw new Error('Image generation did not return a usable data URL');
+        }
+
         // Extract post content from AI response (handle various response formats)
         let postContent;
         if (typeof linkedinPost === 'string') {
@@ -251,6 +255,7 @@ export const processTranscript = async (job) => {
             hookId: contentHook.id,
             content: postContent,
             imageUrl: imageResult.url,
+            imagePrompt: imageResult.prompt,
             status: 'PENDING' // Will go to approval queue
           }
         });
