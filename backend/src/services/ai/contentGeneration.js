@@ -15,6 +15,281 @@ const buildPlainTextPost = (text) => {
   };
 };
 
+const stripCodeFences = (text) => {
+  if (typeof text !== 'string') {
+    return '';
+  }
+
+  const trimmed = text.trim();
+  if (!trimmed.startsWith('```')) {
+    return trimmed;
+  }
+
+  const match = trimmed.match(/```[a-zA-Z]*\s*\n?([\s\S]*?)```$/);
+  if (match) {
+    return match[1].trim();
+  }
+
+  return trimmed.replace(/^```[a-zA-Z]*\s*\n?/, '').replace(/```$/, '').trim();
+};
+
+const extractImagePromptFromData = (data) => {
+  if (!data || typeof data === 'string') {
+    return null;
+  }
+
+  if (typeof data.imagePrompt === 'string' && data.imagePrompt.trim()) {
+    return data.imagePrompt.trim();
+  }
+
+  if (typeof data.image_prompt === 'string' && data.image_prompt.trim()) {
+    return data.image_prompt.trim();
+  }
+
+  if (Array.isArray(data)) {
+    for (const item of data) {
+      const prompt = extractImagePromptFromData(item);
+      if (prompt) {
+        return prompt;
+      }
+    }
+    return null;
+  }
+
+  if (typeof data === 'object') {
+    for (const value of Object.values(data)) {
+      const prompt = extractImagePromptFromData(value);
+      if (prompt) {
+        return prompt;
+      }
+    }
+  }
+
+  return null;
+};
+
+const buildPostFromStructuredData = (data) => {
+  if (!data) {
+    return '';
+  }
+
+  if (typeof data === 'string') {
+    return data.trim();
+  }
+
+  if (Array.isArray(data)) {
+    return data
+      .map(item => buildPostFromStructuredData(item))
+      .filter(Boolean)
+      .join('\n\n');
+  }
+
+  if (typeof data !== 'object') {
+    return '';
+  }
+
+  if (typeof data.post === 'string' && data.post.trim()) {
+    return data.post.trim();
+  }
+
+  if (typeof data.content === 'string' && data.content.trim()) {
+    return data.content.trim();
+  }
+
+  if (typeof data.body === 'string' && data.body.trim()) {
+    return data.body.trim();
+  }
+
+  if (data.linkedInPost) {
+    const nested = buildPostFromStructuredData(data.linkedInPost);
+    if (nested) {
+      return nested;
+    }
+  }
+
+  const pieces = [];
+
+  if (typeof data.hook === 'string' && data.hook.trim()) {
+    pieces.push(data.hook.trim());
+  }
+
+  if (typeof data.mainContent === 'string' && data.mainContent.trim()) {
+    pieces.push(data.mainContent.trim());
+  }
+
+  if (typeof data.summary === 'string' && data.summary.trim()) {
+    pieces.push(data.summary.trim());
+  }
+
+  for (const key of ['callToAction', 'cta', 'closingThought']) {
+    if (typeof data[key] === 'string' && data[key].trim()) {
+      pieces.push(data[key].trim());
+    }
+  }
+
+  if (Array.isArray(data.paragraphs)) {
+    pieces.push(
+      ...data.paragraphs
+        .map(paragraph => buildPostFromStructuredData(paragraph))
+        .filter(Boolean)
+    );
+  }
+
+  if (Array.isArray(data.sections)) {
+    pieces.push(
+      ...data.sections
+        .map(section => buildPostFromStructuredData(section))
+        .filter(Boolean)
+    );
+  }
+
+  if (typeof data.hashtags === 'string' && data.hashtags.trim()) {
+    pieces.push(data.hashtags.trim());
+  } else if (Array.isArray(data.hashtags)) {
+    const tags = data.hashtags
+      .filter(tag => typeof tag === 'string' && tag.trim())
+      .join(' ');
+
+    if (tags) {
+      pieces.push(tags);
+    }
+  }
+
+  if (pieces.length > 0) {
+    return pieces.join('\n\n');
+  }
+
+  return '';
+};
+
+const buildPostFromLooseJson = (text) => {
+  if (typeof text !== 'string') {
+    return null;
+  }
+
+  const extractField = (key) => {
+    const regex = new RegExp(`"${key}"\s*:\s*"([\s\S]*?)"(?=,\s*"|\s*}$)`, 'i');
+    const match = text.match(regex);
+    if (!match) {
+      return '';
+    }
+    return match[1].replace(/\r/g, '').trim();
+  };
+
+  const candidateKeys = ['post', 'content', 'body', 'mainContent'];
+  let sourceKey = null;
+  let postText = '';
+
+  for (const key of candidateKeys) {
+    const value = extractField(key);
+    if (value) {
+      postText = value;
+      sourceKey = key;
+      break;
+    }
+  }
+
+  const hook = extractField('hook');
+  const callToAction = extractField('callToAction') || extractField('cta');
+  const hashtags = extractField('hashtags');
+  const reasoning = extractField('reasoning');
+  const imagePrompt = extractField('imagePrompt') || extractField('image_prompt');
+
+  const pieces = [];
+  if (hook && sourceKey !== 'post' && sourceKey !== 'content') {
+    pieces.push(hook);
+  }
+
+  if (postText) {
+    pieces.push(postText);
+  }
+
+  if (callToAction && (!postText || !postText.includes(callToAction))) {
+    pieces.push(callToAction);
+  }
+
+  if (hashtags && (!postText || !postText.includes(hashtags))) {
+    pieces.push(hashtags);
+  }
+
+  if (!pieces.length) {
+    return null;
+  }
+
+  const combinedPost = pieces.join('\n\n').trim();
+
+  return {
+    post: combinedPost,
+    reasoning: reasoning || null,
+    imagePrompt: imagePrompt || null
+  };
+};
+
+const normalizePostResponse = (rawResponse) => {
+  const stripped = stripCodeFences(rawResponse || '');
+  let imagePrompt = null;
+  let reasoning = null;
+  let workingText = stripped;
+
+  const imagePromptMatch = workingText.match(/(?:^|\n)(?:Image\s*Prompt|Image prompt|Suggested image):\s*(.+)$/i);
+  if (imagePromptMatch) {
+    imagePrompt = imagePromptMatch[1].trim();
+    workingText = workingText.replace(imagePromptMatch[0], '').trim();
+  }
+
+  const trimmed = workingText.trim();
+  if (!trimmed) {
+    return {
+      post: '',
+      reasoning: null,
+      estimatedCharacterCount: 0,
+      imagePrompt: imagePrompt || null
+    };
+  }
+
+  const looksLikeJson = trimmed.startsWith('{') || trimmed.startsWith('[');
+  if (looksLikeJson) {
+    try {
+      const parsed = JSON.parse(trimmed);
+      const postText = buildPostFromStructuredData(parsed);
+      reasoning = typeof parsed?.reasoning === 'string' ? parsed.reasoning.trim() : null;
+      const extractedImagePrompt = extractImagePromptFromData(parsed);
+      if (extractedImagePrompt) {
+        imagePrompt = extractedImagePrompt;
+      }
+
+      if (postText) {
+        const cleanedPost = postText.trim();
+        return {
+          post: cleanedPost,
+          reasoning,
+          estimatedCharacterCount: cleanedPost.length,
+          imagePrompt: imagePrompt || null
+        };
+      }
+    } catch (jsonError) {
+      console.warn('⚠️ Could not parse AI response as JSON:', jsonError);
+      const looseResult = buildPostFromLooseJson(trimmed);
+      if (looseResult?.post) {
+        const cleanedPost = looseResult.post.trim();
+        return {
+          post: cleanedPost,
+          reasoning: looseResult.reasoning || reasoning,
+          estimatedCharacterCount: cleanedPost.length,
+          imagePrompt: imagePrompt || looseResult.imagePrompt || null
+        };
+      }
+    }
+  }
+
+  const plainResult = buildPlainTextPost(trimmed);
+  return {
+    ...plainResult,
+    reasoning: reasoning ?? plainResult.reasoning,
+    imagePrompt: imagePrompt || null
+  };
+};
+
 const getAnthropicClient = () => {
   if (!anthropic && process.env.ANTHROPIC_API_KEY && process.env.ANTHROPIC_API_KEY !== 'your_anthropic_api_key_here') {
     anthropic = new Anthropic({
@@ -119,50 +394,43 @@ ${brandContext}
 Content Hook:
 ${hook}
 
-Create a LinkedIn post that:
-1. Opens with a compelling hook that grabs attention from ${processedBrandVoice.targetAudience}
-2. Addresses specific ${processedBrandVoice.industry} pain points: ${processedBrandVoice.painPoints.slice(0, 3).join(', ')}
+Craft a LinkedIn post that:
+1. Opens with a scroll-stopping hook for ${processedBrandVoice.targetAudience}
+2. Addresses ${processedBrandVoice.industry} pain points such as ${processedBrandVoice.painPoints.slice(0, 3).join(', ')}
 3. Uses ${processedBrandVoice.companyName}'s tone: ${processedBrandVoice.tone}
 4. Incorporates these industry keywords naturally: ${processedBrandVoice.keywords.slice(0, 4).join(', ')}
-5. Includes a call-to-action or thought-provoking question relevant to ${processedBrandVoice.targetAudience}
+5. Includes an authentic call-to-action or thought-provoking question relevant to ${processedBrandVoice.targetAudience}
 6. Is optimized for LinkedIn engagement (150-300 words)
 7. Sounds like it could only come from ${processedBrandVoice.companyName} based on their expertise
+8. Ends with 2-4 relevant hashtags on the final line (no spaces before #)
 
-Format your response as JSON:
-{
-  "content": "The LinkedIn post content",
-  "imagePrompt": "A brief description for an image that would complement this post"
-}
+Write the final post as polished plain text ready to publish on LinkedIn—no JSON, brackets, or section labels. Use short paragraphs for readability and keep emoji usage to a maximum of three.
+
+After the post, add a blank line followed by:
+Image Prompt: <one-sentence visual description that complements the post>
 `;
 
     const completion = await client.messages.create({
       model: process.env.CLAUDE_MODEL || 'claude-3-5-sonnet-20241022',
       messages: [
-        { role: 'user', content: `You are a LinkedIn content creator that writes engaging posts for business professionals. Always respond with valid JSON.\n\n${prompt}` }
+        { role: 'user', content: `You are a LinkedIn content creator that writes engaging posts for business professionals. Deliver the final output exactly as described: ready-to-post text plus an image prompt.\n\n${prompt}` }
       ],
       max_tokens: 800,
       temperature: parseFloat(process.env.CLAUDE_TEMPERATURE) || 0.7
     });
 
     const response = completion.content[0]?.text || '';
-    
-    try {
-      // Handle Claude's markdown-wrapped JSON responses
-      let responseText = response.trim();
-      if (responseText.startsWith('```json')) {
-        responseText = responseText.replace(/^```json\n/, '').replace(/\n```$/, '');
-      } else if (responseText.startsWith('```')) {
-        responseText = responseText.replace(/^```\n/, '').replace(/\n```$/, '');
-      }
-      const result = JSON.parse(responseText);
-      console.log('📱 Generated LinkedIn post using AI');
-      return result;
-    } catch (parseError) {
-      console.warn('⚠️ Falling back to plain-text post output for JSON parse failure');
-      console.error('❌ Failed to parse AI response as JSON:', parseError);
-      console.error('📄 Raw AI response:', response);
-      return buildPlainTextPost(response);
+    const normalized = normalizePostResponse(response);
+
+    if (!normalized.post) {
+      throw new Error('AI LinkedIn post generation returned empty content');
     }
+
+    console.log('📱 Generated LinkedIn post using AI');
+    return {
+      content: normalized.post,
+      imagePrompt: normalized.imagePrompt || 'Professional LinkedIn-style visual reinforcing the post topic'
+    };
 
   } catch (error) {
     console.error('❌ Error generating LinkedIn post:', error);
@@ -348,12 +616,7 @@ ${hookContext.tweet ? `Related Tweet Version: "${hookContext.tweet}"` : ''}
 ${hookContext.preGeneratedLinkedIn ? `Hook Generator's LinkedIn Attempt: "${hookContext.preGeneratedLinkedIn}" (use as reference only, create something better)` : ''}
 ` : ''}
 
-Return clean JSON:
-{
-  "post": "Complete LinkedIn post with natural flow and strong engagement",
-  "reasoning": "Brief explanation of approach and architecture chosen", 
-  "estimatedCharacterCount": number
-}`;
+Deliver the final LinkedIn post as ready-to-publish plain text. Avoid JSON or section labels. Use short paragraphs, include a clear CTA or question before the hashtags, and place 2-4 relevant hashtags on the last line. After the post, add a blank line followed by "Image Prompt: ..." describing a supporting visual in one sentence.`;
     }
 
     // Replace hook placeholder in custom prompt
@@ -381,12 +644,7 @@ ${hookContext.tweet ? `Related Tweet Version: "${hookContext.tweet}"` : ''}
 ${hookContext.preGeneratedLinkedIn ? `Hook Generator's LinkedIn Attempt: "${hookContext.preGeneratedLinkedIn}" (use as reference only, create something better)` : ''}
 ` : ''}
 
-Return clean JSON:
-{
-  "post": "Complete LinkedIn post with natural flow and strong engagement",
-  "reasoning": "Brief explanation of approach and architecture chosen",
-  "estimatedCharacterCount": number
-}`;
+Deliver the final LinkedIn post as ready-to-publish plain text. Avoid JSON or section labels. Use short paragraphs, include a clear CTA or question before the hashtags, and place 2-4 relevant hashtags on the last line. After the post, add a blank line followed by "Image Prompt: ..." describing a supporting visual in one sentence.`;
     }
 
     const completion = await client.messages.create({
@@ -394,7 +652,7 @@ Return clean JSON:
       messages: [
         { 
           role: 'user', 
-          content: `You are an expert LinkedIn content creator that writes engaging posts for business professionals. Always respond with valid JSON.\n\n${prompt}` 
+          content: `You are an expert LinkedIn content creator that writes engaging posts for business professionals. Deliver a ready-to-post LinkedIn article followed by an image prompt as described.\n\n${prompt}` 
         }
       ],
       max_tokens: 1500,
@@ -402,65 +660,21 @@ Return clean JSON:
     });
 
     const response = completion.content[0]?.text || '';
-    
-    try {
-      // Handle Claude's markdown-wrapped JSON responses
-      let responseText = response.trim();
-      console.log(`🔍 Raw LinkedIn response (first 200 chars): ${responseText.substring(0, 200)}`);
-      
-      // More robust markdown parsing
-      if (responseText.includes('```')) {
-        // Extract everything between first ``` and last ```
-        const match = responseText.match(/```(?:json)?\s*\n?([\s\S]*?)```/);
-        if (match) {
-          responseText = match[1].trim();
-        } else {
-          // Fallback: just remove all ``` lines
-          responseText = responseText.replace(/^```[a-z]*\s*\n?/i, '').replace(/\n?```\s*$/i, '');
-        }
-      }
-      
-      console.log(`🔍 Cleaned LinkedIn response (first 200 chars): ${responseText.substring(0, 200)}`);
-      
-      // Try to fix common JSON issues
-      let fixedResponseText = responseText;
-      
-      // Fix unescaped quotes in string values
-      fixedResponseText = fixedResponseText.replace(/: "(.*?)"(,|\n|$)/g, (match, content, suffix) => {
-        const escapedContent = content.replace(/"/g, '\\"');
-        return `: "${escapedContent}"${suffix}`;
-      });
-      
-      // Fix trailing commas
-      fixedResponseText = fixedResponseText.replace(/,\s*([}\]])/g, '$1');
-      
-      try {
-        const result = JSON.parse(fixedResponseText);
-        console.log('📱 Generated enhanced LinkedIn post using AI');
-        return result;
-      } catch (secondParseError) {
-        console.warn('⚠️ Falling back to plain-text post output for enhanced JSON parse failure');
-        console.error('❌ Still failed after JSON fixes:', secondParseError);
-        
-        // Last resort: extract post content with regex if it's a simple format
-        const simplePostMatch = responseText.match(/"post":\s*"([^"]*(?:\\.[^"]*)*)"/);
-        if (simplePostMatch) {
-          console.log('🔧 Extracted post content with regex fallback');
-          return {
-            post: simplePostMatch[1].replace(/\\"/g, '"'),
-            reasoning: null,
-            estimatedCharacterCount: simplePostMatch[1].length
-          };
-        }
+    console.log(`🔍 Raw LinkedIn response (first 200 chars): ${response.substring(0, 200)}`);
 
-        return buildPlainTextPost(responseText || response);
-      }
-    } catch (parseError) {
-      console.warn('⚠️ Enhanced response parse failed, returning plain-text fallback');
-      console.error('❌ Failed to parse enhanced AI response as JSON:', parseError);
-      console.error('📄 Raw AI response:', response);
+    const normalized = normalizePostResponse(response);
+
+    if (!normalized.post) {
+      console.error('❌ Enhanced LinkedIn post generation returned empty content');
       return buildPlainTextPost(response);
     }
+
+    if (!normalized.reasoning && hookContext?.reasoning) {
+      normalized.reasoning = hookContext.reasoning;
+    }
+
+    console.log(`📱 Generated enhanced LinkedIn post using AI (${normalized.post.length} characters)`);
+    return normalized;
 
   } catch (error) {
     console.error('❌ Error generating enhanced LinkedIn post:', error);
