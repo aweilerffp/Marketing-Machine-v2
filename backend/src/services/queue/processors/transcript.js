@@ -130,13 +130,30 @@ export const processTranscript = async (job) => {
     // Step 3: Generate marketing hooks using AI (with fallbacks)
     let brandVoice = {};
     if (company) {
-      // Parse brand voice JSON data and add company name
       try {
-        brandVoice = company.brandVoiceData ? JSON.parse(company.brandVoiceData) : {};
-        brandVoice.companyName = company.name; // Add company name to brand voice data
+        if (company.brandVoiceData) {
+          if (typeof company.brandVoiceData === 'string') {
+            brandVoice = JSON.parse(company.brandVoiceData);
+          } else if (typeof company.brandVoiceData === 'object') {
+            brandVoice = { ...company.brandVoiceData };
+          }
+        }
       } catch (error) {
-        console.warn('⚠️ Failed to parse brand voice data, using fallback');
-        brandVoice = { companyName: company.name };
+        console.warn('⚠️ Failed to parse brand voice data, using fallback', error);
+        brandVoice = {};
+      }
+
+      if (!brandVoice || typeof brandVoice !== 'object') {
+        brandVoice = {};
+      }
+
+      // Ensure core identifiers are always present
+      brandVoice.companyName = (typeof brandVoice.companyName === 'string' && brandVoice.companyName.trim().length > 0)
+        ? brandVoice.companyName.trim()
+        : company.name;
+
+      if (!Array.isArray(brandVoice.colors) && Array.isArray(brandVoice.brandColors)) {
+        brandVoice.colors = brandVoice.brandColors;
       }
     }
     // Parse content pillars (stored as JSON string)

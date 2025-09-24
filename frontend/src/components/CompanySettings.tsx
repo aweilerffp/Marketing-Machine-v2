@@ -155,21 +155,62 @@ export const CompanySettings: React.FC<CompanySettingsProps> = ({ onBack }) => {
     }));
   };
 
+  const sanitizeMultilineInput = (value: string) =>
+    value
+      .split('\n')
+      .map(item => item.trim())
+      .filter(item => item.length > 0);
+
+  const sanitizeCommaSeparatedInput = (value: string) =>
+    value
+      .split(',')
+      .map(item => item.trim())
+      .filter(item => item.length > 0);
+
   const handleSave = () => {
-    const brandVoiceData = {
-      industry: formData.industry,
-      targetAudience: formData.targetAudience,
-      websiteContent: formData.websiteContent,
-      samplePosts: formData.samplePosts.split('\n').filter(post => post.trim()),
-      brandColors: formData.brandColors.split(',').map(color => color.trim()),
-      personality: company?.brandVoiceData?.personality || ['professional', 'helpful', 'authoritative']
+    const existingBrandVoice = (company?.brandVoiceData && typeof company.brandVoiceData === 'object')
+      ? company.brandVoiceData
+      : {};
+
+    const cleanedCompanyName = formData.companyName.trim();
+    const cleanedIndustry = formData.industry.trim();
+    const cleanedAudience = formData.targetAudience.trim();
+    const cleanedWebsiteContent = formData.websiteContent.trim();
+    const cleanedSamplePosts = sanitizeMultilineInput(formData.samplePosts);
+    const cleanedBrandColors = sanitizeCommaSeparatedInput(formData.brandColors);
+
+    const mergedBrandVoiceData = {
+      ...existingBrandVoice,
+      companyName: cleanedCompanyName || existingBrandVoice.companyName || company?.name || '',
+      industry: cleanedIndustry || existingBrandVoice.industry || '',
+      targetAudience: cleanedAudience || existingBrandVoice.targetAudience || '',
+      websiteContent: cleanedWebsiteContent || existingBrandVoice.websiteContent || '',
+      samplePosts: cleanedSamplePosts.length > 0
+        ? cleanedSamplePosts
+        : Array.isArray(existingBrandVoice.samplePosts)
+          ? existingBrandVoice.samplePosts
+          : [],
+      brandColors: cleanedBrandColors.length > 0
+        ? cleanedBrandColors
+        : Array.isArray(existingBrandVoice.brandColors)
+          ? existingBrandVoice.brandColors
+          : [],
+      personality: Array.isArray(existingBrandVoice.personality) && existingBrandVoice.personality.length > 0
+        ? existingBrandVoice.personality
+        : ['professional', 'helpful', 'authoritative']
     };
 
+    const cleanedContentPillars = Array.isArray(formData.contentPillars)
+      ? formData.contentPillars
+          .map(pillar => pillar.trim())
+          .filter(pillar => pillar.length > 0)
+      : [];
+
     const companyData = {
-      name: formData.companyName,
-      brandVoiceData,
-      contentPillars: Array.isArray(formData.contentPillars) 
-        ? formData.contentPillars.filter(pillar => pillar.trim() !== '')
+      name: cleanedCompanyName || company?.name || '',
+      brandVoiceData: mergedBrandVoiceData,
+      contentPillars: cleanedContentPillars.length > 0
+        ? cleanedContentPillars
         : ['Industry Insights', 'Product Updates', 'Customer Success'],
       postingSchedule: company?.postingSchedule || {
         timezone: 'America/New_York',

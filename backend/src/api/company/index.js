@@ -6,6 +6,162 @@ import { generateCustomLinkedInPrompt, getCustomLinkedInPrompt, generateCustomHo
 
 const router = express.Router();
 
+const DEFAULT_CONTENT_PILLARS = ['Industry Insights', 'Product Updates', 'Customer Success'];
+
+const parseBrandVoiceData = (raw) => {
+  if (!raw) {
+    return {};
+  }
+
+  if (typeof raw === 'string') {
+    try {
+      return JSON.parse(raw);
+    } catch (error) {
+      console.warn('⚠️ Failed to parse brand voice JSON, falling back to empty object');
+      return {};
+    }
+  }
+
+  return raw;
+};
+
+const sanitizeStringArray = (value, fallback = []) => {
+  let candidate = [];
+
+  if (Array.isArray(value)) {
+    candidate = value;
+  } else if (typeof value === 'string' && value.trim().length > 0) {
+    candidate = value.split(',');
+  }
+
+  const cleaned = candidate
+    .map(item => (typeof item === 'string' ? item.trim() : ''))
+    .filter(item => item.length > 0);
+
+  if (cleaned.length > 0) {
+    return cleaned;
+  }
+
+  const fallbackArray = Array.isArray(fallback) ? fallback : [];
+  return fallbackArray
+    .map(item => (typeof item === 'string' ? item.trim() : ''))
+    .filter(item => item.length > 0);
+};
+
+const parseContentPillars = (pillars) => {
+  if (!pillars) {
+    return [];
+  }
+
+  if (Array.isArray(pillars)) {
+    return pillars;
+  }
+
+  if (typeof pillars === 'string') {
+    try {
+      const parsed = JSON.parse(pillars);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch (error) {
+      console.warn('⚠️ Failed to parse content pillars, using empty array');
+      return [];
+    }
+  }
+
+  return [];
+};
+
+const normalizeContentPillars = (pillars, fallback = DEFAULT_CONTENT_PILLARS) => {
+  const candidateArray = parseContentPillars(pillars);
+
+  const cleaned = candidateArray
+    .map(item => (typeof item === 'string' ? item.trim() : ''))
+    .filter(item => item.length > 0);
+
+  const unique = Array.from(new Set(cleaned));
+  if (unique.length > 0) {
+    return unique;
+  }
+
+  const fallbackArray = parseContentPillars(fallback);
+  const cleanedFallback = fallbackArray
+    .map(item => (typeof item === 'string' ? item.trim() : ''))
+    .filter(item => item.length > 0);
+
+  return cleanedFallback.length > 0 ? Array.from(new Set(cleanedFallback)) : DEFAULT_CONTENT_PILLARS;
+};
+
+const normalizeBrandVoicePayload = (existingRaw = {}, incomingRaw = {}, fallbackName = '') => {
+  const existing = parseBrandVoiceData(existingRaw);
+  const incoming = parseBrandVoiceData(incomingRaw);
+
+  const merged = {
+    ...existing,
+    ...incoming
+  };
+
+  const applyStringField = (key, fallback = '') => {
+    const incomingValue = typeof incoming[key] === 'string' ? incoming[key].trim() : '';
+    const existingValue = typeof existing[key] === 'string' ? existing[key].trim() : '';
+    const fallbackValue = typeof fallback === 'string' ? fallback.trim() : '';
+    const resolved = incomingValue || existingValue || fallbackValue;
+    if (resolved) {
+      merged[key] = resolved;
+    } else {
+      delete merged[key];
+    }
+  };
+
+  applyStringField('companyName', fallbackName);
+  applyStringField('industry');
+  applyStringField('targetAudience');
+  applyStringField('tone');
+  applyStringField('websiteContent');
+
+  const samplePosts = sanitizeStringArray(incoming.samplePosts, existing.samplePosts);
+  if (samplePosts.length > 0) {
+    merged.samplePosts = samplePosts;
+  } else if (Array.isArray(existing.samplePosts) && existing.samplePosts.length > 0) {
+    merged.samplePosts = sanitizeStringArray(existing.samplePosts);
+  } else {
+    delete merged.samplePosts;
+  }
+
+  const brandColors = sanitizeStringArray(incoming.brandColors, existing.brandColors || existing.colors);
+  if (brandColors.length > 0) {
+    merged.brandColors = brandColors;
+  } else if (Array.isArray(existing.brandColors) && existing.brandColors.length > 0) {
+    merged.brandColors = sanitizeStringArray(existing.brandColors);
+  } else {
+    delete merged.brandColors;
+  }
+
+  const paletteColors = sanitizeStringArray(incoming.colors, brandColors.length > 0 ? brandColors : existing.colors || existing.brandColors);
+  if (paletteColors.length > 0) {
+    merged.colors = paletteColors;
+  } else if (Array.isArray(merged.brandColors) && merged.brandColors.length > 0) {
+    merged.colors = merged.brandColors;
+  } else if (Array.isArray(existing.colors) && existing.colors.length > 0) {
+    merged.colors = sanitizeStringArray(existing.colors);
+  } else {
+    delete merged.colors;
+  }
+
+  merged.keywords = sanitizeStringArray(incoming.keywords, existing.keywords);
+  merged.painPoints = sanitizeStringArray(incoming.painPoints, existing.painPoints);
+
+  if (!Array.isArray(merged.personality) || merged.personality.length === 0) {
+    merged.personality = ['professional', 'helpful', 'authoritative'];
+  }
+
+  Object.keys(merged).forEach(key => {
+    if (typeof merged[key] === 'string') {
+      merged[key] = merged[key].trim();
+    }
+  });
+
+  return merged;
+};
+
 // Get company profile
 router.get('/', requireAuth, async (req, res) => {
   try {
@@ -243,11 +399,11 @@ router.get('/current', requireAuth, async (req, res) => {
 router.post('/', requireAuth, async (req, res) => {
   try {
     const clerkId = getUserId(req);
-    const { 
-      name, 
-      brandVoiceData, 
-      contentPillars, 
-      postingSchedule 
+    const {
+      name,
+      brandVoiceData,
+      contentPillars,
+      postingSchedule
     } = req.body;
 
     if (!name) {
@@ -271,19 +427,38 @@ router.post('/', requireAuth, async (req, res) => {
       });
     }
 
+    const existingCompany = user.company || null;
+    const hasIncomingBrandVoice = typeof brandVoiceData !== 'undefined' && brandVoiceData !== null;
+    const parsedIncomingBrandVoice = hasIncomingBrandVoice ? parseBrandVoiceData(brandVoiceData) : {};
+    const normalizedBrandVoiceData = normalizeBrandVoicePayload(
+      existingCompany?.brandVoiceData,
+      hasIncomingBrandVoice ? parsedIncomingBrandVoice : existingCompany?.brandVoiceData,
+      name
+    );
+
+    const existingContentPillars = parseContentPillars(existingCompany?.contentPillars);
+    const normalizedContentPillarsArray = normalizeContentPillars(
+      typeof contentPillars !== 'undefined' ? contentPillars : existingContentPillars,
+      existingContentPillars.length > 0 ? existingContentPillars : DEFAULT_CONTENT_PILLARS
+    );
+
+    const normalizedPostingSchedule = postingSchedule && Object.keys(postingSchedule).length > 0
+      ? postingSchedule
+      : existingCompany?.postingSchedule || {
+          defaultTimes: ['09:00', '13:00'],
+          timezone: 'America/New_York'
+        };
+
     let company;
-    if (user.company) {
+    if (existingCompany) {
       // Update existing company
       company = await prisma.company.update({
         where: { userId: user.id },
         data: {
           name,
-          brandVoiceData: brandVoiceData || {},
-          contentPillars: JSON.stringify(contentPillars || []),
-          postingSchedule: postingSchedule || {
-            defaultTimes: ['09:00', '13:00'],
-            timezone: 'America/New_York'
-          }
+          brandVoiceData: normalizedBrandVoiceData,
+          contentPillars: JSON.stringify(normalizedContentPillarsArray),
+          postingSchedule: normalizedPostingSchedule
         }
       });
     } else {
@@ -292,20 +467,19 @@ router.post('/', requireAuth, async (req, res) => {
         data: {
           userId: user.id,
           name,
-          brandVoiceData: brandVoiceData || {},
-          contentPillars: JSON.stringify(contentPillars || []),
-          postingSchedule: postingSchedule || {
-            defaultTimes: ['09:00', '13:00'],
-            timezone: 'America/New_York'
-          }
+          brandVoiceData: normalizedBrandVoiceData,
+          contentPillars: JSON.stringify(normalizedContentPillarsArray),
+          postingSchedule: normalizedPostingSchedule
         }
       });
     }
 
+    const shouldGenerateCustomPrompt = hasIncomingBrandVoice && Object.keys(parsedIncomingBrandVoice).length > 0;
+
     // Generate custom LinkedIn prompt after brand onboarding completion
-    if (brandVoiceData && Object.keys(brandVoiceData).length > 0) {
+    if (shouldGenerateCustomPrompt) {
       console.log(`🎯 Triggering custom prompt generation for company: ${company.name}`);
-      
+
       // Generate custom prompt in background (don't wait for it)
       generateCustomLinkedInPrompt(company.id).then(() => {
         console.log(`✨ Custom LinkedIn prompt generated for ${company.name}`);
