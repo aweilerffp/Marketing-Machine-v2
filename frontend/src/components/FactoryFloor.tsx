@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { contentApi } from '../services/api';
+import { contentApi, type ContentPost, type PaginatedResponse } from '../services/api';
 
 interface FactoryStation {
   id: string;
@@ -24,11 +24,13 @@ export const FactoryFloor: React.FC<FactoryFloorProps> = () => {
   });
 
   // Fetch content queue data
-  const { data: contentQueue } = useQuery({
+  const { data: contentQueue } = useQuery<PaginatedResponse<ContentPost> | ContentPost[]>({
     queryKey: ['content-queue'],
     queryFn: contentApi.getQueue,
     refetchInterval: 5000,
   });
+
+  const queuePosts: ContentPost[] = Array.isArray(contentQueue) ? contentQueue : (contentQueue?.posts ?? []);
 
   // Calculate factory station status based on real data
   const factoryStations: FactoryStation[] = [
@@ -52,16 +54,16 @@ export const FactoryFloor: React.FC<FactoryFloorProps> = () => {
       id: 'quality',
       name: 'Quality Control',
       icon: '✅',
-      status: contentQueue?.length > 0 ? 'operational' : 'idle',
-      currentItems: contentQueue?.filter(p => p.status === 'PENDING').length || 0,
+      status: queuePosts.length > 0 ? 'operational' : 'idle',
+      currentItems: queuePosts.filter(p => p.status === 'PENDING').length,
       description: 'Content review and approval queue'
     },
     {
       id: 'output',
       name: 'Output Gallery',
       icon: '📤',
-      status: contentQueue?.some(p => p.status === 'APPROVED') ? 'operational' : 'idle',
-      currentItems: contentQueue?.filter(p => p.status === 'APPROVED').length || 0,
+      status: queuePosts.some(p => p.status === 'APPROVED') ? 'operational' : 'idle',
+      currentItems: queuePosts.filter(p => p.status === 'APPROVED').length,
       description: 'Published content and performance metrics'
     },
     {
@@ -260,7 +262,7 @@ export const FactoryFloor: React.FC<FactoryFloorProps> = () => {
             <div className="text-2xl mr-3">✅</div>
             <div>
               <div className="text-2xl font-bold text-gray-900">
-                {contentQueue?.filter(p => p.status === 'APPROVED').length || 0}
+                {queuePosts.filter(p => p.status === 'APPROVED').length}
               </div>
               <div className="text-sm text-gray-600">Ready to Publish</div>
             </div>
