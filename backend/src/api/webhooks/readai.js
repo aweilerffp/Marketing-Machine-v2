@@ -2,6 +2,7 @@ import express from 'express';
 import dotenv from 'dotenv';
 import { PrismaClient } from '@prisma/client';
 import { transcriptQueue } from '../../services/queue/index.js';
+import { ensureMeetingSessionHistory } from '../../models/meetingSessionUtils.js';
 
 // Ensure environment variables are loaded
 dotenv.config();
@@ -78,27 +79,27 @@ router.post('/', async (req, res) => {
       });
     }
 
-    // Check if meeting already exists
-    const existingMeeting = await prisma.meeting.findUnique({
-      where: { readaiId: session_id }
+    await ensureMeetingSessionHistory(prisma);
+
+    // Determine sequencing for this Read.ai session so previous meetings remain untouched
+    const latestMeeting = await prisma.meeting.findFirst({
+      where: {
+        OR: [
+          { sourceSessionId: session_id },
+          { readaiId: session_id } // legacy records without sourceSessionId
+        ]
+      },
+      orderBy: {
+        sessionSequence: 'desc'
+      }
     });
 
-    // Always reprocess existing meetings (like the reprocess button in UI)
-    if (existingMeeting) {
-      console.log(`🔄 Force reprocessing meeting ${session_id}`);
-      // Delete existing content but keep the meeting record for upsert
-      await prisma.contentPost.deleteMany({
-        where: {
-          hook: {
-            meetingId: existingMeeting.id
-          }
-        }
-      });
-      await prisma.contentHook.deleteMany({
-        where: { meetingId: existingMeeting.id }
-      });
-      // Don't delete the meeting - let upsert handle the update
-      console.log(`🗑️ Deleted existing content for meeting ${session_id}, keeping meeting record for update`);
+    const lastSequence = latestMeeting?.sessionSequence ?? 0;
+    const nextSequence = lastSequence + 1;
+    const internalSessionId = nextSequence === 1 ? session_id : `${session_id}#${nextSequence}`;
+
+    if (latestMeeting) {
+      console.log(`🔁 Incoming Read.ai meeting ${session_id} detected (seq ${nextSequence}). Keeping previous ${lastSequence} version(s).`);
     }
 
     // Extract transcript with multiple fallbacks for maximum content richness
@@ -131,7 +132,7 @@ router.post('/', async (req, res) => {
     
     // Add to processing queue
     const jobData = {
-      sessionId: session_id,
+      sessionId: internalSessionId,
       title: title || 'Untitled Meeting',
       summary: summary || '',
       transcript: fullTranscript,
@@ -144,7 +145,9 @@ router.post('/', async (req, res) => {
       receivedAt: new Date().toISOString(),
       // Include company information if authenticated via token
       companyId: targetCompany?.id || null,
-      companyName: targetCompany?.name || null
+      companyName: targetCompany?.name || null,
+      sourceSessionId: session_id,
+      sessionSequence: nextSequence
     };
 
     await transcriptQueue.add('process-transcript', jobData, {
@@ -157,7 +160,7 @@ router.post('/', async (req, res) => {
       removeOnFail: 5,
     });
     
-    console.log(`✅ Read.ai webhook queued for processing: ${session_id}`);
+    console.log(`✅ Read.ai webhook queued for processing: ${internalSessionId}`);
     console.log(`📊 Meeting title: ${title}`);
     console.log(`👥 Participants: ${participants?.length || 0}`);
     console.log(`📝 Transcript length: ${fullTranscript.length} characters`);

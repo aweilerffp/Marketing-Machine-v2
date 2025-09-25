@@ -55,10 +55,14 @@ router.post('/generate', requireAuth, async (req, res) => {
     const sampleMeeting = SAMPLE_MEETING_TOPICS[Math.floor(Math.random() * SAMPLE_MEETING_TOPICS.length)];
     
     // Create a demo meeting record
+    const demoReadAiId = `demo-${Date.now()}`;
+
     const meeting = await prisma.meeting.create({
       data: {
         companyId: company.id,
-        readaiId: `demo-${Date.now()}`,
+        readaiId: demoReadAiId,
+        sourceSessionId: demoReadAiId,
+        sessionSequence: 1,
         title: `[DEMO] ${sampleMeeting.title}`,
         transcript: sampleMeeting.transcript,
         summary: `Demo meeting content for ${company.name}`,

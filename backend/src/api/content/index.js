@@ -3,6 +3,7 @@ import { requireAuth, getUserId } from '../../middleware/clerk.js';
 import prisma from '../../models/prisma.js';
 import demoRouter from './demo.js';
 import { rewriteContent, generateEnhancedLinkedInPost } from '../../services/ai/contentGeneration.js';
+import { ensureMeetingSessionHistory } from '../../models/meetingSessionUtils.js';
 
 const router = express.Router();
 
@@ -657,34 +658,30 @@ router.post('/meetings/:meetingId/reprocess', requireAuth, async (req, res) => {
       });
     }
 
-    // Delete existing content hooks and posts
-    await prisma.contentPost.deleteMany({
+    const sourceSessionId = meeting.sourceSessionId || meeting.readaiId;
+
+    await ensureMeetingSessionHistory(prisma);
+
+    const latestMeeting = await prisma.meeting.findFirst({
       where: {
-        hook: {
-          meetingId: meeting.id
-        }
+        OR: [
+          { sourceSessionId },
+          { readaiId: sourceSessionId }
+        ]
+      },
+      orderBy: {
+        sessionSequence: 'desc'
       }
     });
 
-    await prisma.contentHook.deleteMany({
-      where: {
-        meetingId: meeting.id
-      }
-    });
+    const nextSequence = (latestMeeting?.sessionSequence ?? 0) + 1;
+    const internalSessionId = nextSequence === 1 ? sourceSessionId : `${sourceSessionId}#${nextSequence}`;
 
-    // Reset meeting status to PROCESSING
-    await prisma.meeting.update({
-      where: { id: meeting.id },
-      data: { 
-        processedStatus: 'PROCESSING',
-        processingStep: 'RECEIVED',
-        processedAt: new Date()
-      }
-    });
+    console.log(`🔁 Reprocessing meeting ${meetingId} as new sequence ${nextSequence} (source ${sourceSessionId})`);
 
-    // Re-queue the meeting for processing
+    // Queue the meeting for a new processing pass without disturbing historical content
     const jobData = {
-      sessionId: meeting.readaiId,
+      sessionId: internalSessionId,
       title: meeting.title || 'Untitled Meeting',
       summary: meeting.summary || '',
       transcript: meeting.transcript,
@@ -697,7 +694,9 @@ router.post('/meetings/:meetingId/reprocess', requireAuth, async (req, res) => {
       receivedAt: new Date().toISOString(),
       // Include company information if authenticated
       companyId: user?.company?.id || null,
-      companyName: user?.company?.name || null
+      companyName: user?.company?.name || null,
+      sourceSessionId,
+      sessionSequence: nextSequence
     };
 
     const { transcriptQueue } = await import('../../services/queue/index.js');
@@ -716,7 +715,8 @@ router.post('/meetings/:meetingId/reprocess', requireAuth, async (req, res) => {
     res.json({
       message: 'Meeting queued for reprocessing',
       meetingId: meeting.id,
-      status: 'PROCESSING'
+      newSessionId: internalSessionId,
+      sessionSequence: nextSequence
     });
   } catch (error) {
     console.error('Reprocess meeting error:', error);

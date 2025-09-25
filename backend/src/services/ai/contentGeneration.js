@@ -254,6 +254,9 @@ const normalizePostResponse = (rawResponse) => {
     workingText = workingText.replace(imagePromptMatch[0], '').trim();
   }
 
+  // Remove meta lead-ins like "Here's a LinkedIn post..." that violate formatting rules
+  workingText = workingText.replace(/^[\s]*here'?s\s+(?:an?|the)?\s*(?:high-?converting\s+)?linkedin\s+post[^\n]*\n?/i, '');
+
   const trimmed = workingText.trim();
   if (!trimmed) {
     return {
@@ -588,6 +591,13 @@ export async function generateEnhancedLinkedInPost(hookText, pillar, brandVoiceD
     console.log('  - companyId:', companyId);
     console.log('  - brandVoiceData sample:', JSON.stringify(brandVoiceData)?.substring(0, 200));
     
+    const outputFormatRulesSection = `## OUTPUT FORMAT RULES
+- Begin immediately with the first sentence of the LinkedIn post—do not add meta commentary such as "Here's a post"
+- Return only the finished post text followed by a blank line and "Image Prompt: ..." describing a supporting visual in one sentence
+- Keep paragraphs between one and three sentences and limit emoji usage to no more than three in the entire post
+- Ensure the penultimate paragraph includes a clear call-to-action or question for the reader
+- Place 2-4 relevant hashtags on the final line with no additional text after them`;
+
     let prompt;
     
     // Try to get custom prompt for the company
@@ -617,7 +627,11 @@ export async function generateEnhancedLinkedInPost(hookText, pillar, brandVoiceD
 - Use engaging hooks and clear structure
 - Optimize for LinkedIn engagement
 - Keep posts between 150-300 words
-- Include relevant emojis sparingly
+- Limit emoji usage to no more than three throughout the post
+- Keep paragraphs between one and three sentences for readability
+- Ensure the penultimate paragraph includes a clear call-to-action or question
+
+${outputFormatRulesSection}
 
 ## INPUT DATA
 Hook: "{HOOK_LIST}"
@@ -635,7 +649,7 @@ ${hookContext.tweet ? `Related Tweet Version: "${hookContext.tweet}"` : ''}
 ${hookContext.preGeneratedLinkedIn ? `Hook Generator's LinkedIn Attempt: "${hookContext.preGeneratedLinkedIn}" (use as reference only, create something better)` : ''}
 ` : ''}
 
-Deliver the final LinkedIn post as ready-to-publish plain text. Avoid JSON or section labels. Use short paragraphs, include a clear CTA or question before the hashtags, and place 2-4 relevant hashtags on the last line. After the post, add a blank line followed by "Image Prompt: ..." describing a supporting visual in one sentence.`;
+Deliver the final LinkedIn post exactly in this format.`;
     }
 
     // Replace hook placeholder in custom prompt
@@ -644,26 +658,47 @@ Deliver the final LinkedIn post as ready-to-publish plain text. Avoid JSON or se
       prompt = prompt.replace(hookListPlaceholder, hookText);
     } else {
       // If custom prompt doesn't have the placeholder, append the hook data
-      prompt += `
+      const supplementalSections = [];
 
-## INPUT DATA
-Hook: "${hookText}"
-Content Pillar: "${pillar}"
+      if (!prompt.includes('## OUTPUT FORMAT RULES')) {
+        supplementalSections.push(outputFormatRulesSection);
+      }
 
-${meetingSummary ? `Meeting Context: "${meetingSummary}"` : ''}
+      const inputSectionLines = [`## INPUT DATA`, `Hook: "${hookText}"`, `Content Pillar: "${pillar}"`];
+      if (meetingSummary) {
+        inputSectionLines.push(``, `Meeting Context: "${meetingSummary}"`);
+      }
 
-${hookContext ? `
+      if (hookContext) {
+        const contextLines = [``, `## HOOK GENERATION INSIGHTS`];
+        if (hookContext.originalInsight) {
+          contextLines.push(`Original Quote: "${hookContext.originalInsight}"`);
+        }
+        if (hookContext.reasoning) {
+          contextLines.push(`Strategic Reasoning: "${hookContext.reasoning}"`);
+        }
+        if (typeof hookContext.confidence !== 'undefined') {
+          contextLines.push(`Confidence Score: ${hookContext.confidence}`);
+        }
+        if (hookContext.blog?.title || hookContext.blog?.hook) {
+          const blogTitle = hookContext.blog.title ?? '';
+          const blogHook = hookContext.blog.hook ?? '';
+          contextLines.push(`Related Blog Concept: "${blogTitle}"${blogHook ? ` - ${blogHook}` : ''}`.trim());
+        }
+        if (hookContext.tweet) {
+          contextLines.push(`Related Tweet Version: "${hookContext.tweet}"`);
+        }
+        if (hookContext.preGeneratedLinkedIn) {
+          contextLines.push(`Hook Generator's LinkedIn Attempt: "${hookContext.preGeneratedLinkedIn}" (use as reference only, create something better)`);
+        }
+        inputSectionLines.push(...contextLines);
+      }
 
-## HOOK GENERATION INSIGHTS
-Original Quote: "${hookContext.originalInsight}"
-Strategic Reasoning: "${hookContext.reasoning}"
-Confidence Score: ${hookContext.confidence}
-${hookContext.blog ? `Related Blog Concept: "${hookContext.blog.title}" - ${hookContext.blog.hook}` : ''}
-${hookContext.tweet ? `Related Tweet Version: "${hookContext.tweet}"` : ''}
-${hookContext.preGeneratedLinkedIn ? `Hook Generator's LinkedIn Attempt: "${hookContext.preGeneratedLinkedIn}" (use as reference only, create something better)` : ''}
-` : ''}
+      supplementalSections.push(inputSectionLines.join('\n'));
 
-Deliver the final LinkedIn post as ready-to-publish plain text. Avoid JSON or section labels. Use short paragraphs, include a clear CTA or question before the hashtags, and place 2-4 relevant hashtags on the last line. After the post, add a blank line followed by "Image Prompt: ..." describing a supporting visual in one sentence.`;
+      supplementalSections.push('Follow the OUTPUT FORMAT RULES above exactly. Deliver only the finalized LinkedIn post text, then add a blank line and "Image Prompt: ..." with a single-sentence visual description.');
+
+      prompt += `\n\n${supplementalSections.join('\n\n')}`;
     }
 
     const completion = await client.messages.create({

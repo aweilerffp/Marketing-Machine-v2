@@ -14,6 +14,31 @@ const getAnthropicClient = () => {
   return anthropic;
 };
 
+const OUTPUT_FORMAT_RULES_BLOCK = `## OUTPUT FORMAT RULES
+- Begin immediately with the first sentence of the LinkedIn post—do not add meta commentary such as "Here's a post"
+- Return only the finished post text followed by a blank line and "Image Prompt: ..." describing a supporting visual in one sentence
+- Keep paragraphs between one and three sentences and limit emoji usage to no more than three in the entire post
+- Ensure the penultimate paragraph includes a clear call-to-action or question for the reader
+- Place 2-4 relevant hashtags on the final line with no additional text after them`;
+
+function ensureOutputFormatGuardrails(prompt) {
+  let base = '';
+
+  if (typeof prompt === 'string') {
+    base = prompt.trimEnd();
+  }
+
+  if (!base) {
+    base = getBasicPromptTemplate().trimEnd();
+  }
+
+  if (base.toLowerCase().includes('## output format rules')) {
+    return base;
+  }
+
+  return `${base}\n\n${OUTPUT_FORMAT_RULES_BLOCK}`;
+}
+
 /**
  * Auto-detect industry and ICP from brand voice data using AI and web search
  * @param {object} brandVoiceData - Company's brand voice data
@@ -228,7 +253,7 @@ Return the complete customized prompt ready to use for LinkedIn post generation.
       ]
     });
 
-    const customPrompt = completion.content[0]?.text || getBasicPromptTemplate();
+    const customPrompt = ensureOutputFormatGuardrails(completion.content[0]?.text || getBasicPromptTemplate());
     
     // Store the custom prompt in the database
     await prisma.company.update({
@@ -241,7 +266,7 @@ Return the complete customized prompt ready to use for LinkedIn post generation.
 
   } catch (error) {
     console.error('❌ Error generating custom LinkedIn prompt:', error);
-    return getBasicPromptTemplate();
+    return ensureOutputFormatGuardrails(getBasicPromptTemplate());
   }
 }
 
@@ -263,7 +288,7 @@ export async function getCustomLinkedInPrompt(companyId) {
     // If custom prompt already exists, return it
     if (company.customLinkedInPrompt) {
       console.log(`📋 Using existing custom prompt for ${company.name}`);
-      return company.customLinkedInPrompt;
+      return ensureOutputFormatGuardrails(company.customLinkedInPrompt);
     }
 
     // Generate new custom prompt
@@ -272,7 +297,7 @@ export async function getCustomLinkedInPrompt(companyId) {
     
   } catch (error) {
     console.error('❌ Error getting custom LinkedIn prompt:', error);
-    return getBasicPromptTemplate();
+    return ensureOutputFormatGuardrails(getBasicPromptTemplate());
   }
 }
 
@@ -442,20 +467,25 @@ Format: Return only the hooks, one per line, without numbering or bullets.`;
  * Basic prompt template fallback
  */
 function getBasicPromptTemplate() {
-  return `You are a senior LinkedIn copywriter creating high-converting content for business professionals.
+  return `## SYSTEM
+You are {company}'s senior LinkedIn copywriter creating high-converting content for {ICP}.
 
-Create LinkedIn posts that:
-1. Open with compelling hooks that grab attention
-2. Provide valuable insights or actionable advice  
-3. Use a conversational but professional tone
-4. Include calls-to-action or thought-provoking questions
-5. Are optimized for LinkedIn engagement (1500-2200 characters)
-6. Focus on industry pain points and practical solutions
+## CONTENT REQUIREMENTS
+- Write in a professional but conversational tone
+- Provide actionable insights or advice with concrete examples from the source material
+- Use engaging hooks and clear structure optimized for LinkedIn
+- Keep posts between 150-300 words
+- Limit emoji usage to no more than three throughout the post
+- Keep paragraphs between one and three sentences for readability
+- Ensure the penultimate paragraph includes a clear call-to-action or question
 
-Return clean JSON with:
-{
-  "post": "Complete LinkedIn post with natural flow and strong engagement",
-  "reasoning": "Brief explanation of approach chosen", 
-  "estimatedCharacterCount": number
-}`;
+${OUTPUT_FORMAT_RULES_BLOCK}
+
+## INPUT DATA
+- Hook(s): {HOOK_LIST}
+- Content Pillar: {PILLAR}
+- Brand Voice Summary: {BRAND_VOICE_SUMMARY}
+- Meeting Transcript Excerpt: {TRANSCRIPT_SNIPPET}
+
+Deliver the final LinkedIn post exactly following the OUTPUT FORMAT RULES. Return only the finalized post text followed by a blank line and "Image Prompt: ..." with a single-sentence visual description.`;
 }

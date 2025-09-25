@@ -6,6 +6,7 @@ dotenv.config({ path: '.env.local', override: true }); // Override with .env.loc
 import { PrismaClient } from '@prisma/client';
 import { generateHooks, generateImage } from '../../ai/index.js';
 import { generateEnhancedLinkedInPost, sanitizePostText } from '../../ai/contentGeneration.js';
+import { ensureMeetingSessionHistory } from '../../../models/meetingSessionUtils.js';
 
 // Create Prisma client with explicit DATABASE_URL for queue worker context
 const prisma = new PrismaClient({
@@ -38,6 +39,8 @@ export const processTranscript = async (job) => {
     actionItems,
     owner,
     participants,
+    sourceSessionId,
+    sessionSequence = 1,
     // NEW: Token-validated company data from webhook
     companyId,
     companyName
@@ -96,6 +99,8 @@ export const processTranscript = async (job) => {
       // Continue processing but won't have brand voice data
     }
 
+    await ensureMeetingSessionHistory(prisma);
+
     // Step 2: Store or update meeting record with PROCESSING status
     const meeting = await prisma.meeting.upsert({
       where: {
@@ -108,7 +113,9 @@ export const processTranscript = async (job) => {
         summary: summary || null,
         actionItems: actionItems ? { actionItems } : null,
         processedStatus: 'PROCESSING',
-        processedAt: new Date()
+        processedAt: new Date(),
+        sourceSessionId: sourceSessionId || sessionId,
+        sessionSequence
       },
       create: {
         readaiId: sessionId,
@@ -118,7 +125,9 @@ export const processTranscript = async (job) => {
         summary: summary || null,
         actionItems: actionItems ? { actionItems } : null,
         processedStatus: 'PROCESSING',
-        processedAt: new Date()
+        processedAt: new Date(),
+        sourceSessionId: sourceSessionId || sessionId,
+        sessionSequence
       }
     });
 

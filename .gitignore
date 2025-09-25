@@ -27,3 +27,5 @@ frontend/dist/
 
 # Prisma
 backend/prisma/migrations/
+!backend/prisma/migrations/20251004100000_add_meeting_session_history/
+!backend/prisma/migrations/20251004100000_add_meeting_session_history/migration.sql
