@@ -257,7 +257,12 @@ const normalizePostResponse = (rawResponse) => {
   // Remove meta lead-ins like "Here's a LinkedIn post..." that violate formatting rules
   workingText = workingText.replace(/^[\s]*here'?s\s+(?:an?|the)?\s*(?:high-?converting\s+)?linkedin\s+post[^\n]*\n?/i, '');
 
-  const trimmed = workingText.trim();
+  const withoutHashtagOnlyLines = workingText
+    .split('\n')
+    .filter(line => !/^#\S+(\s+#\S+)*\s*$/.test(line.trim()))
+    .join('\n');
+
+  const trimmed = withoutHashtagOnlyLines.trim();
   if (!trimmed) {
     return {
       post: '',
@@ -424,9 +429,9 @@ Craft a LinkedIn post that:
 5. Includes an authentic call-to-action or thought-provoking question relevant to ${processedBrandVoice.targetAudience}
 6. Is optimized for LinkedIn engagement (150-300 words)
 7. Sounds like it could only come from ${processedBrandVoice.companyName} based on their expertise
-8. Ends with 2-4 relevant hashtags on the final line (no spaces before #)
+8. Delivers value without using hashtags
 
-Write the final post as polished plain text ready to publish on LinkedIn—no JSON, brackets, or section labels. Use short paragraphs for readability and keep emoji usage to a maximum of three.
+Write the final post as polished plain text ready to publish on LinkedIn—no JSON, brackets, or section labels. Use short paragraphs for readability, keep emoji usage to a maximum of three, and do not include hashtags anywhere in the post.
 
 After the post, add a blank line followed by:
 Image Prompt: <one-sentence visual description that complements the post>
@@ -596,7 +601,7 @@ export async function generateEnhancedLinkedInPost(hookText, pillar, brandVoiceD
 - Return only the finished post text followed by a blank line and "Image Prompt: ..." describing a supporting visual in one sentence
 - Keep paragraphs between one and three sentences and limit emoji usage to no more than three in the entire post
 - Ensure the penultimate paragraph includes a clear call-to-action or question for the reader
-- Place 2-4 relevant hashtags on the final line with no additional text after them`;
+- Do not include hashtags anywhere in the output`;
 
     let prompt;
     

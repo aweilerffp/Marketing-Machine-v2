@@ -19,7 +19,7 @@ const OUTPUT_FORMAT_RULES_BLOCK = `## OUTPUT FORMAT RULES
 - Return only the finished post text followed by a blank line and "Image Prompt: ..." describing a supporting visual in one sentence
 - Keep paragraphs between one and three sentences and limit emoji usage to no more than three in the entire post
 - Ensure the penultimate paragraph includes a clear call-to-action or question for the reader
-- Place 2-4 relevant hashtags on the final line with no additional text after them`;
+- Do not include hashtags anywhere in the output`;
 
 function ensureOutputFormatGuardrails(prompt) {
   let base = '';
