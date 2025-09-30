@@ -85,11 +85,11 @@ export function PostViewModal({ isOpen, onClose, post }: PostViewModalProps) {
             <div className="space-y-6">
               {/* Post Image */}
               {post.imageUrl && (
-                <div className="rounded-lg overflow-hidden">
+                <div className="rounded-lg overflow-hidden bg-gray-100 dark:bg-slate-800">
                   <img
                     src={post.imageUrl}
                     alt="Post preview"
-                    className="w-full h-64 object-cover"
+                    className="w-full max-h-80 object-contain"
                   />
                 </div>
               )}
