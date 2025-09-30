@@ -25,13 +25,15 @@ model Company {
   name                   String
   brandVoiceData         Json     // Stores all brand voice analysis
   contentPillars         String   // JSON string for SQLite compatibility
-  postingSchedule        Json     // Default posting times  
+  postingSchedule        Json     // Default posting times
   supportedPlatforms     String   @default("[]") // JSON array of platform types
   platformConfigurations Json? // Platform-specific settings
   webhookToken           String?  @unique // Secret token for Read.ai webhook authentication
   webhookActive          Boolean  @default(true) // Allow enabling/disabling webhook processing
   customLinkedInPrompt   String?  // AI-generated custom prompt for LinkedIn post generation
   customHookPrompt       String?  // AI-generated custom prompt for hook generation
+  customImagePrompt      String?  // AI-generated custom prompt for image generation
+  websiteScreenshotUrl   String?  // URL/path to website screenshot for visual analysis
   meetings               Meeting[]
   createdAt              DateTime @default(now())
   updatedAt              DateTime @updatedAt
@@ -87,6 +89,7 @@ model ContentPost {
   status         PostStatus  @default(PENDING)
   scheduledFor   DateTime?
   publishedAt    DateTime?
+  rejectionReason String?    // Reason for rejection (e.g., LinkedIn connection issues)
   platformContent Json?      // Store platform-specific data (LinkedIn post IDs, etc.)
   editHistory    Json?       // Track content edits
   createdAt      DateTime    @default(now())

@@ -250,7 +250,15 @@ export const processTranscript = async (job) => {
         // Generate accompanying image
         const brandColors = brandVoice.colors || [];
         const aiImagePrompt = typeof linkedinPost === 'object' ? linkedinPost.imagePrompt : null;
-        const imageResult = await generateImage(hookText, brandColors, 'professional', aiImagePrompt);
+
+        // Use custom image prompt if available, otherwise fall back to AI-generated prompt
+        let finalImagePrompt = aiImagePrompt;
+        if (company?.customImagePrompt) {
+          // Replace {hook} placeholder with actual hook text
+          finalImagePrompt = company.customImagePrompt.replace('{hook}', hookText);
+        }
+
+        const imageResult = await generateImage(hookText, brandColors, 'professional', finalImagePrompt);
 
         if (!imageResult?.url) {
           throw new Error('Image generation did not return a usable data URL');

@@ -71,6 +71,8 @@ router.get('/dashboard', requireAuth, async (req, res) => {
           imageUrl: true,
           status: true,
           scheduledFor: true,
+          rejectionReason: true,
+          platformContent: true,
           createdAt: true,
           hook: {
             select: {
@@ -188,6 +190,8 @@ router.get('/queue', requireAuth, async (req, res) => {
           status: true,
           scheduledFor: true,
           publishedAt: true,
+          rejectionReason: true,
+          platformContent: true,
           createdAt: true,
           updatedAt: true,
           hook: {
@@ -274,6 +278,8 @@ router.get('/queue', requireAuth, async (req, res) => {
         status: true,
         scheduledFor: true,
         publishedAt: true,
+        rejectionReason: true,
+        platformContent: true,
         createdAt: true,
         updatedAt: true,
         hook: {
@@ -381,6 +387,50 @@ router.put('/:postId/status', requireAuth, async (req, res) => {
         scheduledFor: (status === 'APPROVED' || status === 'SCHEDULED') ? scheduledFor : null
       }
     });
+
+    // If post is approved for immediate posting or scheduled, queue it for LinkedIn
+    if (status === 'APPROVED' && !scheduledFor) {
+      // Post immediately
+      try {
+        const { schedulerQueue } = await import('../../services/queue/index.js');
+        await schedulerQueue.add('schedule-post', { postId }, {
+          attempts: 3,
+          backoff: {
+            type: 'exponential',
+            delay: 2000,
+          },
+          removeOnComplete: 10,
+          removeOnFail: 5,
+        });
+        console.log(`📅 Queued immediate LinkedIn posting for post ${postId}`);
+      } catch (queueError) {
+        console.error('Failed to queue immediate posting:', queueError);
+        // Don't fail the request if queueing fails
+      }
+    } else if (status === 'SCHEDULED' && scheduledFor) {
+      // Schedule for later
+      try {
+        const scheduledDate = new Date(scheduledFor);
+        const now = new Date();
+        const delay = Math.max(0, scheduledDate.getTime() - now.getTime());
+
+        const { schedulerQueue } = await import('../../services/queue/index.js');
+        await schedulerQueue.add('schedule-post', { postId }, {
+          delay,
+          attempts: 3,
+          backoff: {
+            type: 'exponential',
+            delay: 2000,
+          },
+          removeOnComplete: 10,
+          removeOnFail: 5,
+        });
+        console.log(`📅 Queued LinkedIn posting for post ${postId} at ${scheduledDate.toISOString()}`);
+      } catch (queueError) {
+        console.error('Failed to queue scheduled posting:', queueError);
+        // Don't fail the request if queueing fails
+      }
+    }
 
     res.json(updatedPost);
   } catch (error) {

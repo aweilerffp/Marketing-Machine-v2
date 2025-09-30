@@ -1,6 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk';
 import prisma from '../../models/prisma.js';
-import { processBrandVoice } from './brandVoiceProcessor.js';
+import { processBrandVoice, analyzeWebsiteVisualStyle } from './brandVoiceProcessor.js';
 
 // Lazy initialization to ensure environment variables are loaded
 let anthropic = null;
@@ -488,4 +488,132 @@ ${OUTPUT_FORMAT_RULES_BLOCK}
 - Meeting Transcript Excerpt: {TRANSCRIPT_SNIPPET}
 
 Deliver the final LinkedIn post exactly following the OUTPUT FORMAT RULES. Return only the finalized post text followed by a blank line and "Image Prompt: ..." with a single-sentence visual description.`;
+}
+
+/**
+ * Generate a custom image generation prompt based on brand voice
+ * @param {string} companyId - The company ID
+ * @returns {Promise<string>} The generated custom image prompt
+ */
+export async function generateCustomImagePrompt(companyId) {
+  try {
+    const company = await prisma.company.findUnique({
+      where: { id: companyId }
+    });
+
+    if (!company) {
+      throw new Error('Company not found');
+    }
+
+    const brandVoice = processBrandVoice(company.brandVoiceData);
+
+    // Analyze visual style from website content
+    console.log(`🎨 Analyzing visual style for ${company.name}...`);
+    const visualStyle = await analyzeWebsiteVisualStyle(company.brandVoiceData);
+
+    // Build detailed color guidance from visual style analysis
+    let colorGuidance = '';
+    if (visualStyle.exactColors) {
+      colorGuidance = `EXACT COLOR PALETTE (use these specific colors):
+- Primary: ${visualStyle.exactColors.primary}
+- Secondary: ${visualStyle.exactColors.secondary || 'N/A'}
+- Accent: ${visualStyle.exactColors.accent || 'N/A'}
+- Background: ${visualStyle.exactColors.background || 'white/light'}
+- Text: ${visualStyle.exactColors.text || 'dark gray/black'}`;
+    } else {
+      const brandColors = brandVoice.brandColors || brandVoice.colors || [];
+      const colorPrompt = Array.isArray(brandColors) && brandColors.length > 0
+        ? `#${brandColors.join(', #')}`
+        : 'professional color palette';
+      colorGuidance = `BRAND COLORS: ${colorPrompt}`;
+    }
+
+    // Build comprehensive style guidance
+    const designStyleGuidance = visualStyle.designStyle
+      ? `\nDESIGN STYLE: ${visualStyle.designStyle}`
+      : '';
+
+    const typographyGuidance = visualStyle.typography
+      ? `\nTYPOGRAPHY STYLE: ${visualStyle.typography.style}, ${visualStyle.typography.weight}`
+      : '';
+
+    const visualEffectsGuidance = visualStyle.visualEffects
+      ? `\nVISUAL EFFECTS: ${visualStyle.visualEffects.borderRadius}, ${visualStyle.visualEffects.shadows}, ${visualStyle.visualEffects.gradients}`
+      : '';
+
+    const iconImageryGuidance = visualStyle.iconImageryStyle
+      ? `\nICON/IMAGERY STYLE: ${visualStyle.iconImageryStyle}`
+      : '';
+
+    // Build enhanced prompt with detailed visual specifications
+    const customPrompt = `Create a professional conceptual illustration representing: "{hook}"
+
+${colorGuidance}${designStyleGuidance}${typographyGuidance}${visualEffectsGuidance}${iconImageryGuidance}
+
+BRAND VISUAL CHARACTERISTICS:
+${visualStyle.imageGenerationGuidance || `- Design Mood: ${visualStyle.mood}
+- Aesthetic: ${visualStyle.designLanguage}
+- Energy Level: ${visualStyle.energyLevel}
+- Key Characteristics: ${visualStyle.keyCharacteristics?.join(', ')}`}
+
+COMPOSITION REQUIREMENTS:
+- Layout: ${visualStyle.layoutPattern || 'Professional, balanced composition'}
+- Visual Metaphors: ${visualStyle.visualMetaphors?.join(', ') || 'Industry-relevant imagery'}
+- Platform: LinkedIn-appropriate professional imagery
+- Technical: High contrast, clear focal points, no text overlays
+- Approach: Abstract or conceptual representations that match the brand's design system
+
+The image MUST match the exact visual style, colors, and design patterns from the brand's website for perfect brand cohesion.`;
+
+    // Store visual style analysis in brandVoiceData for caching
+    const updatedBrandVoiceData = {
+      ...company.brandVoiceData,
+      visualStyleProfile: visualStyle
+    };
+
+    // Save both the prompt and the visual style analysis
+    await prisma.company.update({
+      where: { id: companyId },
+      data: {
+        customImagePrompt: customPrompt,
+        brandVoiceData: updatedBrandVoiceData
+      }
+    });
+
+    console.log(`✅ Generated enhanced image prompt for ${company.name} (mood: ${visualStyle.mood})`);
+    return customPrompt;
+
+  } catch (error) {
+    console.error('Error generating custom image prompt:', error);
+    throw error;
+  }
+}
+
+/**
+ * Get the custom image prompt for a company (generate if doesn't exist)
+ * @param {string} companyId - The company ID
+ * @returns {Promise<string>} The custom image prompt
+ */
+export async function getCustomImagePrompt(companyId) {
+  try {
+    const company = await prisma.company.findUnique({
+      where: { id: companyId }
+    });
+
+    if (!company) {
+      throw new Error('Company not found');
+    }
+
+    // If custom prompt exists, return it
+    if (company.customImagePrompt) {
+      return company.customImagePrompt;
+    }
+
+    // Otherwise, generate and return a new one
+    return await generateCustomImagePrompt(companyId);
+
+  } catch (error) {
+    console.error('Error getting custom image prompt:', error);
+    throw error;
+  }
 }

@@ -232,7 +232,7 @@ ${JSON.stringify(brandVoice, null, 2)}
 
 export const generateImage = async (hook, brandColors = [], style = 'professional', promptOverride = null) => {
   try {
-    console.log('🎨 Generating image with DALL-E');
+    console.log('🎨 Generating image with GPT-Image-1 (medium quality)');
     
     // Create enhanced image prompt
     const colorPrompt = brandColors.length > 0 
@@ -257,13 +257,11 @@ The image should be visually appealing and complement a LinkedIn post about this
 `;
 
     const response = await getOpenAIClient().images.generate({
-      model: "dall-e-3",
+      model: "gpt-image-1",
       prompt: imagePrompt.trim(),
       n: 1,
       size: "1024x1024",
-      quality: "standard",
-      style: "vivid",
-      response_format: "b64_json"
+      quality: "medium"
     });
 
     const imageData = response.data?.[0]?.b64_json;

@@ -11,15 +11,22 @@ export const api = axios.create({
   },
 });
 
-// Add auth token to requests  
+// Add auth token to requests
 api.interceptors.request.use(async (config) => {
   try {
-    // Get Clerk token from global Clerk instance
-    if ((window as any).Clerk?.session) {
-      const token = await (window as any).Clerk.session.getToken();
-      if (token) {
-        config.headers.Authorization = `Bearer ${token}`;
+    // Skip auth token in development if using localhost backend
+    const isDevelopment = API_BASE_URL.includes('localhost');
+
+    if (!isDevelopment) {
+      // Only try to get Clerk token in production or when not using localhost
+      if ((window as any).Clerk?.session) {
+        const token = await (window as any).Clerk.session.getToken();
+        if (token) {
+          config.headers.Authorization = `Bearer ${token}`;
+        }
       }
+    } else {
+      console.log('🚧 Development mode: Skipping Clerk token for localhost API');
     }
   } catch (error) {
     console.warn('Failed to get auth token:', error);
@@ -337,6 +344,72 @@ export const companyApi = {
     companyName: string;
   }> => {
     const response = await api.post('/api/company/hook-prompt/regenerate');
+    return response.data;
+  },
+
+  // Image prompt management
+  getImagePrompt: async (): Promise<{
+    prompt: string;
+    lastGenerated: string;
+    lastModified: string;
+    isCustom: boolean;
+    companyName: string;
+  }> => {
+    const response = await api.get('/api/company/image-prompt');
+    return response.data;
+  },
+
+  updateImagePrompt: async (prompt: string): Promise<{
+    prompt: string;
+    lastModified: string;
+    message: string;
+    companyName: string;
+  }> => {
+    const response = await api.put('/api/company/image-prompt', { prompt });
+    return response.data;
+  },
+
+  regenerateImagePrompt: async (): Promise<{
+    prompt: string;
+    lastGenerated: string;
+    message: string;
+    companyName: string;
+  }> => {
+    const response = await api.post('/api/company/image-prompt/regenerate');
+    return response.data;
+  },
+
+  // Screenshot & visual analysis
+  captureScreenshot: async (url: string): Promise<{
+    message: string;
+    screenshotUrl: string;
+    visualStyle: any;
+    companyName: string;
+  }> => {
+    const response = await api.post('/api/company/screenshot/capture', { url });
+    return response.data;
+  },
+
+  uploadScreenshot: async (file: File): Promise<{
+    message: string;
+    visualStyle: any;
+    companyName: string;
+  }> => {
+    const formData = new FormData();
+    formData.append('screenshot', file);
+    const response = await api.post('/api/company/screenshot/upload', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    });
+    return response.data;
+  },
+
+  getVisualStyle: async (): Promise<{
+    visualStyle: any;
+    screenshotUrl: string | null;
+    hasScreenshot: boolean;
+    companyName: string;
+  }> => {
+    const response = await api.get('/api/company/visual-style');
     return response.data;
   }
 };

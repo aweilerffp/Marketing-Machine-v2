@@ -1,10 +1,28 @@
 import express from 'express';
+import multer from 'multer';
 import { requireAuth, getUserId } from '../../middleware/clerk.js';
 import prisma from '../../models/prisma.js';
 import crypto from 'crypto';
-import { generateCustomLinkedInPrompt, getCustomLinkedInPrompt, generateCustomHookPrompt, getCustomHookPrompt } from '../../services/ai/promptGeneration.js';
+import { generateCustomLinkedInPrompt, getCustomLinkedInPrompt, generateCustomHookPrompt, getCustomHookPrompt, generateCustomImagePrompt, getCustomImagePrompt } from '../../services/ai/promptGeneration.js';
+import { captureWebsiteScreenshot, convertScreenshotToBase64, cleanupOldScreenshots } from '../../services/screenshot/capture.js';
+import { analyzeWebsiteVisualStyle } from '../../services/ai/brandVoiceProcessor.js';
 
 const router = express.Router();
+
+// Configure multer for screenshot uploads
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 5 * 1024 * 1024 // 5MB limit
+  },
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype.startsWith('image/')) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only image files are allowed'));
+    }
+  }
+});
 
 const DEFAULT_CONTENT_PILLARS = ['Industry Insights', 'Product Updates', 'Customer Success'];
 
@@ -435,6 +453,12 @@ router.post('/', requireAuth, async (req, res) => {
       hasIncomingBrandVoice ? parsedIncomingBrandVoice : existingCompany?.brandVoiceData,
       name
     );
+
+    // Clear visual style cache if brand voice is being updated
+    if (hasIncomingBrandVoice && normalizedBrandVoiceData.visualStyleProfile) {
+      console.log('🔄 Clearing cached visual style analysis due to brand voice update');
+      delete normalizedBrandVoiceData.visualStyleProfile;
+    }
 
     const existingContentPillars = parseContentPillars(existingCompany?.contentPillars);
     const normalizedContentPillarsArray = normalizeContentPillars(
@@ -1138,7 +1162,7 @@ router.put('/hook-prompt', requireAuth, async (req, res) => {
 router.post('/hook-prompt/regenerate', requireAuth, async (req, res) => {
   try {
     const clerkId = getUserId(req);
-    
+
     let user = await prisma.user.findUnique({
       where: { clerkId },
       include: { company: true }
@@ -1150,8 +1174,8 @@ router.post('/hook-prompt/regenerate', requireAuth, async (req, res) => {
 
     let company = user.company;
     if (!company) {
-      return res.status(404).json({ 
-        error: 'No company found. Please complete your company setup first.' 
+      return res.status(404).json({
+        error: 'No company found. Please complete your company setup first.'
       });
     }
 
@@ -1170,6 +1194,322 @@ router.post('/hook-prompt/regenerate', requireAuth, async (req, res) => {
   } catch (error) {
     console.error('Hook prompt regeneration error:', error);
     res.status(500).json({ error: 'Failed to regenerate custom hook prompt' });
+  }
+});
+
+// IMAGE PROMPT MANAGEMENT ENDPOINTS
+// ==================================
+
+// Get current custom image prompt
+router.get('/image-prompt', requireAuth, async (req, res) => {
+  try {
+    const clerkId = getUserId(req);
+
+    let user = await prisma.user.findUnique({
+      where: { clerkId },
+      include: { company: true }
+    });
+
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    let company = user.company;
+    if (!company) {
+      return res.status(404).json({ error: 'Company not found' });
+    }
+
+    // Get or generate custom image prompt
+    const prompt = await getCustomImagePrompt(company.id);
+    const hasCustomPrompt = !!company.customImagePrompt;
+
+    res.json({
+      prompt,
+      lastGenerated: company.updatedAt,
+      lastModified: company.updatedAt,
+      isCustom: hasCustomPrompt,
+      companyName: company.name
+    });
+
+  } catch (error) {
+    console.error('Image prompt fetch error:', error);
+    res.status(500).json({ error: 'Failed to get custom image prompt' });
+  }
+});
+
+// Update custom image prompt
+router.put('/image-prompt', requireAuth, async (req, res) => {
+  try {
+    const clerkId = getUserId(req);
+    const { prompt } = req.body;
+
+    if (!prompt || typeof prompt !== 'string') {
+      return res.status(400).json({ error: 'Image prompt content is required' });
+    }
+
+    if (prompt.length > 10000) {
+      return res.status(400).json({ error: 'Image prompt too long (max 10,000 characters)' });
+    }
+
+    let user = await prisma.user.findUnique({
+      where: { clerkId },
+      include: { company: true }
+    });
+
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    let company = user.company;
+    if (!company) {
+      return res.status(404).json({ error: 'Company not found' });
+    }
+
+    // Update the custom image prompt
+    const updatedCompany = await prisma.company.update({
+      where: { id: company.id },
+      data: {
+        customImagePrompt: prompt
+      }
+    });
+
+    console.log(`🎨 Custom image prompt updated for ${updatedCompany.name} by user`);
+
+    res.json({
+      prompt,
+      lastModified: updatedCompany.updatedAt,
+      message: 'Custom image prompt updated successfully',
+      companyName: updatedCompany.name
+    });
+
+  } catch (error) {
+    console.error('Image prompt update error:', error);
+    res.status(500).json({ error: 'Failed to update custom image prompt' });
+  }
+});
+
+// Regenerate custom image prompt from brand voice data
+router.post('/image-prompt/regenerate', requireAuth, async (req, res) => {
+  try {
+    const clerkId = getUserId(req);
+
+    let user = await prisma.user.findUnique({
+      where: { clerkId },
+      include: { company: true }
+    });
+
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    let company = user.company;
+    if (!company) {
+      return res.status(404).json({
+        error: 'No company found. Please complete your company setup first.'
+      });
+    }
+
+    console.log(`🔄 Regenerating custom image prompt for ${company.name}`);
+
+    // Force regeneration of custom image prompt
+    const newPrompt = await generateCustomImagePrompt(company.id);
+
+    res.json({
+      prompt: newPrompt,
+      lastGenerated: new Date().toISOString(),
+      message: 'Custom image prompt regenerated successfully from brand voice data',
+      companyName: company.name
+    });
+
+  } catch (error) {
+    console.error('Image prompt regeneration error:', error);
+    res.status(500).json({ error: 'Failed to regenerate custom image prompt' });
+  }
+});
+
+// ===================================================================
+// SCREENSHOT UPLOAD & VISUAL ANALYSIS
+// ===================================================================
+
+/**
+ * Upload website screenshot for visual analysis
+ * POST /api/company/screenshot/upload
+ */
+router.post('/screenshot/upload', requireAuth, upload.single('screenshot'), async (req, res) => {
+  try {
+    const clerkId = getUserId(req);
+
+    if (!req.file) {
+      return res.status(400).json({ error: 'No screenshot file provided' });
+    }
+
+    // Find user and company
+    const user = await prisma.user.findUnique({
+      where: { clerkId },
+      include: { company: true }
+    });
+
+    if (!user || !user.company) {
+      return res.status(404).json({ error: 'Company not found. Please complete onboarding first.' });
+    }
+
+    const company = user.company;
+
+    // Convert uploaded file to base64
+    const screenshotBase64 = req.file.buffer.toString('base64');
+
+    console.log(`📸 Analyzing uploaded screenshot for ${company.name}...`);
+
+    // Analyze visual style using Claude Vision API
+    const visualStyle = await analyzeWebsiteVisualStyle(company.brandVoiceData, screenshotBase64);
+
+    // Update brand voice data with visual style analysis
+    const updatedBrandVoiceData = {
+      ...company.brandVoiceData,
+      visualStyleProfile: visualStyle
+    };
+
+    // Save analysis to database
+    await prisma.company.update({
+      where: { id: company.id },
+      data: {
+        brandVoiceData: updatedBrandVoiceData,
+        updatedAt: new Date()
+      }
+    });
+
+    // Regenerate custom image prompt with new visual analysis
+    console.log(`🎨 Regenerating custom image prompt with visual analysis...`);
+    const customImagePrompt = await generateCustomImagePrompt(company.id);
+
+    console.log(`✅ Screenshot analyzed for ${company.name}: ${visualStyle.mood}, ${visualStyle.energyLevel} energy`);
+
+    res.json({
+      message: 'Screenshot analyzed successfully',
+      visualStyle,
+      customImagePrompt,
+      companyName: company.name
+    });
+
+  } catch (error) {
+    console.error('Screenshot upload error:', error);
+    res.status(500).json({ error: error.message || 'Failed to upload and analyze screenshot' });
+  }
+});
+
+/**
+ * Capture website screenshot from URL
+ * POST /api/company/screenshot/capture
+ * Body: { url: 'https://example.com' }
+ */
+router.post('/screenshot/capture', requireAuth, async (req, res) => {
+  try {
+    const clerkId = getUserId(req);
+    const { url } = req.body;
+
+    if (!url) {
+      return res.status(400).json({ error: 'Website URL is required' });
+    }
+
+    // Validate URL format
+    let websiteUrl;
+    try {
+      websiteUrl = new URL(url);
+    } catch {
+      return res.status(400).json({ error: 'Invalid URL format' });
+    }
+
+    // Find user and company
+    const user = await prisma.user.findUnique({
+      where: { clerkId },
+      include: { company: true }
+    });
+
+    if (!user || !user.company) {
+      return res.status(404).json({ error: 'Company not found. Please complete onboarding first.' });
+    }
+
+    const company = user.company;
+
+    console.log(`📸 Capturing screenshot of ${url} for ${company.name}...`);
+
+    // Capture screenshot using Puppeteer
+    const { screenshotUrl, screenshotBase64 } = await captureWebsiteScreenshot(url, company.id);
+
+    // Analyze visual style using Claude Vision API
+    const visualStyle = await analyzeWebsiteVisualStyle(company.brandVoiceData, screenshotBase64);
+
+    // Update brand voice data with visual style analysis and screenshot URL
+    const updatedBrandVoiceData = {
+      ...company.brandVoiceData,
+      visualStyleProfile: visualStyle
+    };
+
+    // Save analysis and screenshot URL to database
+    await prisma.company.update({
+      where: { id: company.id },
+      data: {
+        brandVoiceData: updatedBrandVoiceData,
+        websiteScreenshotUrl: screenshotUrl,
+        updatedAt: new Date()
+      }
+    });
+
+    // Clean up old screenshots
+    await cleanupOldScreenshots(company.id);
+
+    // Regenerate custom image prompt with new visual analysis
+    console.log(`🎨 Regenerating custom image prompt with visual analysis...`);
+    const customImagePrompt = await generateCustomImagePrompt(company.id);
+
+    console.log(`✅ Screenshot captured and analyzed for ${company.name}: ${visualStyle.mood}, ${visualStyle.energyLevel} energy`);
+
+    res.json({
+      message: 'Website screenshot captured and analyzed successfully',
+      screenshotUrl,
+      visualStyle,
+      customImagePrompt,
+      companyName: company.name
+    });
+
+  } catch (error) {
+    console.error('Screenshot capture error:', error);
+    res.status(500).json({ error: error.message || 'Failed to capture and analyze screenshot' });
+  }
+});
+
+/**
+ * Get current visual style analysis
+ * GET /api/company/visual-style
+ */
+router.get('/visual-style', requireAuth, async (req, res) => {
+  try {
+    const clerkId = getUserId(req);
+
+    const user = await prisma.user.findUnique({
+      where: { clerkId },
+      include: { company: true }
+    });
+
+    if (!user || !user.company) {
+      return res.status(404).json({ error: 'Company not found' });
+    }
+
+    const company = user.company;
+
+    const brandVoiceData = parseBrandVoiceData(company.brandVoiceData);
+    const visualStyle = brandVoiceData.visualStyleProfile || null;
+
+    res.json({
+      visualStyle,
+      screenshotUrl: company.websiteScreenshotUrl,
+      hasScreenshot: !!company.websiteScreenshotUrl,
+      companyName: company.name
+    });
+
+  } catch (error) {
+    console.error('Visual style retrieval error:', error);
+    res.status(500).json({ error: 'Failed to retrieve visual style' });
   }
 });
 

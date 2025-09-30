@@ -3,6 +3,13 @@ import axios from 'axios';
 import { requireAuth, getUserId } from '../../middleware/clerk.js';
 import postingRouter from './posting.js';
 import prisma from '../../models/prisma.js';
+import {
+  saveLinkedInConnection,
+  getLinkedInConnection,
+  hasLinkedInConnection,
+  removeLinkedInConnection,
+  getLinkedInProfile
+} from '../../services/linkedin/connection.js';
 
 const router = express.Router();
 
@@ -32,6 +39,16 @@ router.post('/callback', requireAuth, async (req, res) => {
       return res.status(400).json({ error: 'Authorization code is required' });
     }
 
+    // Get user ID from clerkId
+    const user = await prisma.user.findUnique({
+      where: { clerkId },
+      select: { id: true }
+    });
+
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
     // Exchange code for access token
     const tokenResponse = await axios.post('https://www.linkedin.com/oauth/v2/accessToken', null, {
       params: {
@@ -46,19 +63,32 @@ router.post('/callback', requireAuth, async (req, res) => {
       }
     });
 
-    const { access_token, expires_in } = tokenResponse.data;
+    const { access_token, expires_in, refresh_token } = tokenResponse.data;
 
-    // TODO: Encrypt token before storing
-    await prisma.user.update({
-      where: { clerkId },
-      data: { 
-        linkedinToken: access_token 
+    // Get LinkedIn profile data
+    const profileResponse = await axios.get('https://api.linkedin.com/v2/me', {
+      headers: {
+        'Authorization': `Bearer ${access_token}`,
+        'X-Restli-Protocol-Version': '2.0.0'
       }
     });
 
-    res.json({ 
-      success: true, 
-      expiresIn: expires_in 
+    // Save connection using PlatformConnection model
+    await saveLinkedInConnection(
+      user.id,
+      access_token,
+      expires_in,
+      refresh_token,
+      profileResponse.data
+    );
+
+    res.json({
+      success: true,
+      expiresIn: expires_in,
+      profile: {
+        name: `${profileResponse.data.firstName?.localized?.en_US || ''} ${profileResponse.data.lastName?.localized?.en_US || ''}`.trim(),
+        id: profileResponse.data.id
+      }
     });
 
   } catch (error) {
@@ -67,62 +97,61 @@ router.post('/callback', requireAuth, async (req, res) => {
   }
 });
 
-// Get LinkedIn connection status
-router.get('/status', requireAuth, async (req, res) => {
-  try {
-    const clerkId = getUserId(req);
-    
-    const user = await prisma.user.findUnique({
-      where: { clerkId },
-      select: { linkedinToken: true }
-    });
-
-    res.json({
-      connected: !!user?.linkedinToken
-    });
-
-  } catch (error) {
-    console.error('LinkedIn status error:', error);
-    res.status(500).json({ error: 'Failed to get LinkedIn status' });
-  }
-});
+// Note: /status endpoint is handled by posting router for rate limit info
 
 // Test LinkedIn connection
 router.get('/profile', requireAuth, async (req, res) => {
   try {
     const clerkId = getUserId(req);
-    
+
     const user = await prisma.user.findUnique({
       where: { clerkId },
-      select: { linkedinToken: true }
+      select: { id: true }
     });
 
-    if (!user?.linkedinToken) {
-      return res.status(401).json({ error: 'LinkedIn not connected' });
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
     }
 
-    // Test the token by fetching profile
-    const profileResponse = await axios.get('https://api.linkedin.com/v2/me', {
-      headers: {
-        'Authorization': `Bearer ${user.linkedinToken}`
-      }
-    });
-
-    res.json(profileResponse.data);
+    const profileData = await getLinkedInProfile(user.id);
+    res.json(profileData);
 
   } catch (error) {
     console.error('LinkedIn profile error:', error);
-    
-    if (error.response?.status === 401) {
-      // Token expired, clear it
-      await prisma.user.update({
-        where: { clerkId: getUserId(req) },
-        data: { linkedinToken: null }
-      });
+
+    if (error.message === 'LinkedIn token expired') {
       return res.status(401).json({ error: 'LinkedIn token expired' });
     }
 
+    if (error.message === 'No LinkedIn connection found') {
+      return res.status(401).json({ error: 'LinkedIn not connected' });
+    }
+
     res.status(500).json({ error: 'Failed to get LinkedIn profile' });
+  }
+});
+
+// Disconnect LinkedIn
+router.delete('/disconnect', requireAuth, async (req, res) => {
+  try {
+    const clerkId = getUserId(req);
+
+    const user = await prisma.user.findUnique({
+      where: { clerkId },
+      select: { id: true }
+    });
+
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    await removeLinkedInConnection(user.id);
+
+    res.json({ success: true, message: 'LinkedIn account disconnected' });
+
+  } catch (error) {
+    console.error('LinkedIn disconnect error:', error);
+    res.status(500).json({ error: 'Failed to disconnect LinkedIn' });
   }
 });
 

@@ -47,6 +47,9 @@ app.use(morgan('combined'));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 
+// Serve static files (screenshots)
+app.use('/screenshots', express.static('public/screenshots'));
+
 // API Key security middleware
 app.use(apiKeySecurityMiddleware);
 

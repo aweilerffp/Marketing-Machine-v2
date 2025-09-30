@@ -1,75 +1,105 @@
 import express from 'express';
 import { requireAuth, getUserId } from '../../middleware/clerk.js';
-import { linkedInService } from '../../services/linkedin/LinkedInService.js';
-import { authService } from '../../services/auth/AuthService.js';
+import {
+  getLinkedInConnection,
+  hasLinkedInConnection
+} from '../../services/linkedin/connection.js';
+import {
+  postTextToLinkedIn,
+  getLinkedInPersonUrn,
+  validateLinkedInConnection,
+  getLinkedInRateLimit
+} from '../../services/linkedin/posting.js';
+import {
+  getLinkedInPostingHistory,
+  getLinkedInPostingStats,
+  checkLinkedInRateLimit
+} from '../../services/linkedin/tracking.js';
 import prisma from '../../models/prisma.js';
 
 const router = express.Router();
 
 /**
- * Post content to LinkedIn
+ * Post content to LinkedIn manually
  */
 router.post('/post', requireAuth, async (req, res) => {
   try {
     const clerkId = getUserId(req);
-    const { contentId, content, scheduleFor } = req.body;
+    const { text, contentId, visibility = 'PUBLIC' } = req.body;
 
-    if (!content || !content.text) {
-      return res.status(400).json({ error: 'Content text is required' });
+    if (!text || text.trim().length === 0) {
+      return res.status(400).json({ error: 'Post text is required' });
     }
 
-    // Get user and LinkedIn token
+    if (text.length > 3000) {
+      return res.status(400).json({ error: 'Post text cannot exceed 3,000 characters' });
+    }
+
+    // Get user
     const user = await prisma.user.findUnique({
-      where: { clerkId }
+      where: { clerkId },
+      select: { id: true }
     });
 
     if (!user) {
       return res.status(404).json({ error: 'User not found' });
     }
 
-    const linkedInToken = await authService.getLinkedInToken(user.id);
-    if (!linkedInToken) {
-      return res.status(400).json({ 
-        error: 'LinkedIn not connected. Please connect your LinkedIn account first.' 
+    // Get LinkedIn connection
+    const connection = await getLinkedInConnection(user.id);
+    if (!connection) {
+      return res.status(400).json({
+        error: 'LinkedIn not connected. Please connect your LinkedIn account first.'
       });
     }
 
-    // Validate LinkedIn connection
-    const connectionStatus = await linkedInService.validateConnection(linkedInToken);
+    // Validate connection
+    const connectionStatus = await validateLinkedInConnection(connection.accessToken);
     if (!connectionStatus.connected) {
-      return res.status(400).json({ 
-        error: 'LinkedIn connection expired. Please reconnect your account.' 
+      return res.status(400).json({
+        error: 'LinkedIn connection expired. Please reconnect your account.'
       });
     }
+
+    // Get person URN
+    const personUrn = await getLinkedInPersonUrn(connection.accessToken);
 
     // Post to LinkedIn
-    const postResult = await linkedInService.postContent({
-      text: content.text,
-      imagePrompt: content.imagePrompt,
-      scheduledFor: scheduleFor ? new Date(scheduleFor) : undefined
-    }, linkedInToken);
+    const postResult = await postTextToLinkedIn(
+      connection.accessToken,
+      personUrn,
+      text,
+      visibility
+    );
 
     if (!postResult.success) {
-      return res.status(500).json({ 
-        error: `LinkedIn posting failed: ${postResult.error}` 
+      return res.status(500).json({
+        error: `LinkedIn posting failed: ${postResult.error}`,
+        statusCode: postResult.statusCode
       });
     }
 
     // Update content post record if provided
     if (contentId) {
-      await prisma.contentPost.update({
-        where: { id: contentId },
-        data: {
-          status: 'PUBLISHED',
-          publishedAt: new Date(postResult.publishedAt),
-          platformContent: JSON.stringify({
-            linkedin: {
-              postId: postResult.linkedinPostId,
-              publishedAt: postResult.publishedAt
+      try {
+        await prisma.contentPost.update({
+          where: { id: contentId },
+          data: {
+            status: 'PUBLISHED',
+            publishedAt: new Date(),
+            platformContent: {
+              linkedin: {
+                postId: postResult.linkedinPostId,
+                publishedAt: postResult.publishedAt,
+                visibility: visibility
+              }
             }
-          })
-        }
-      });
+          }
+        });
+      } catch (updateError) {
+        console.warn('Failed to update ContentPost record:', updateError);
+        // Don't fail the request if the post was successful
+      }
     }
 
     console.log('✅ LinkedIn post successful:', postResult.linkedinPostId);
@@ -78,100 +108,186 @@ router.post('/post', requireAuth, async (req, res) => {
       success: true,
       linkedinPostId: postResult.linkedinPostId,
       publishedAt: postResult.publishedAt,
-      message: 'Successfully posted to LinkedIn!'
+      message: 'Successfully posted to LinkedIn!',
+      visibility: visibility
     });
 
   } catch (error) {
     console.error('LinkedIn posting error:', error);
-    res.status(500).json({ 
+    res.status(500).json({
       error: 'Failed to post to LinkedIn',
-      details: error.message 
+      details: error.message
     });
   }
 });
 
 /**
- * Check LinkedIn connection status
+ * Check LinkedIn posting status and rate limits
  */
 router.get('/status', requireAuth, async (req, res) => {
   try {
     const clerkId = getUserId(req);
-    
+
     const user = await prisma.user.findUnique({
-      where: { clerkId }
+      where: { clerkId },
+      select: { id: true }
     });
 
     if (!user) {
       return res.status(404).json({ error: 'User not found' });
     }
 
-    const linkedInToken = await authService.getLinkedInToken(user.id);
-    if (!linkedInToken) {
-      return res.json({ 
+    const connection = await getLinkedInConnection(user.id);
+    if (!connection) {
+      return res.json({
         connected: false,
         message: 'LinkedIn not connected'
       });
     }
 
-    const connectionStatus = await linkedInService.validateConnection(linkedInToken);
-    const rateLimitStatus = await linkedInService.getRateLimitStatus(linkedInToken);
+    const connectionStatus = await validateLinkedInConnection(connection.accessToken);
+    const rateLimitStatus = await checkLinkedInRateLimit(user.id);
 
     res.json({
       connected: connectionStatus.connected,
-      expiresAt: connectionStatus.expiresAt,
+      expiresAt: connection.expiresAt,
       rateLimit: rateLimitStatus,
-      message: connectionStatus.connected ? 'LinkedIn connected' : 'LinkedIn connection expired'
+      profile: connection.connectionMetadata,
+      message: connectionStatus.connected ? 'LinkedIn connected and ready for posting' : 'LinkedIn connection expired'
     });
 
   } catch (error) {
     console.error('LinkedIn status check error:', error);
-    res.status(500).json({ 
+    res.status(500).json({
       error: 'Failed to check LinkedIn status',
-      details: error.message 
+      details: error.message
     });
   }
 });
 
 /**
- * Store LinkedIn OAuth token (called after OAuth flow)
+ * Test post to LinkedIn (for manual testing)
  */
-router.post('/connect', requireAuth, async (req, res) => {
+router.post('/test', requireAuth, async (req, res) => {
   try {
     const clerkId = getUserId(req);
-    const { accessToken, expiresIn } = req.body;
-
-    if (!accessToken) {
-      return res.status(400).json({ error: 'Access token is required' });
-    }
 
     const user = await prisma.user.findUnique({
-      where: { clerkId }
+      where: { clerkId },
+      select: { id: true }
     });
 
     if (!user) {
       return res.status(404).json({ error: 'User not found' });
     }
 
-    // Calculate expiration date
-    const expiresAt = expiresIn ? 
-      new Date(Date.now() + (expiresIn * 1000)) : 
-      new Date(Date.now() + (60 * 24 * 60 * 60 * 1000)); // 60 days default
+    const connection = await getLinkedInConnection(user.id);
+    if (!connection) {
+      return res.status(400).json({
+        error: 'LinkedIn not connected. Please connect your LinkedIn account first.'
+      });
+    }
 
-    // Store encrypted token
-    await authService.storeEncryptedToken(user.id, accessToken, expiresAt);
+    const testText = `Test post from Marketing Machine - ${new Date().toISOString()}`;
 
-    console.log('✅ LinkedIn token stored for user:', user.id);
+    // Get person URN
+    const personUrn = await getLinkedInPersonUrn(connection.accessToken);
+
+    // Post test content
+    const postResult = await postTextToLinkedIn(
+      connection.accessToken,
+      personUrn,
+      testText,
+      'CONNECTIONS' // Use connections only for test posts
+    );
+
+    if (!postResult.success) {
+      return res.status(500).json({
+        error: `Test post failed: ${postResult.error}`,
+        statusCode: postResult.statusCode
+      });
+    }
 
     res.json({
       success: true,
-      message: 'LinkedIn connected successfully!'
+      message: 'Test post successful!',
+      linkedinPostId: postResult.linkedinPostId,
+      testText: testText
     });
 
   } catch (error) {
-    console.error('LinkedIn connection error:', error);
-    res.status(500).json({ 
-      error: 'Failed to connect LinkedIn',
-      details: error.message 
+    console.error('LinkedIn test post error:', error);
+    res.status(500).json({
+      error: 'Failed to create test post',
+      details: error.message
+    });
+  }
+});
+
+/**
+ * Get LinkedIn posting history
+ */
+router.get('/history', requireAuth, async (req, res) => {
+  try {
+    const clerkId = getUserId(req);
+    const limit = parseInt(req.query.limit) || 10;
+
+    const user = await prisma.user.findUnique({
+      where: { clerkId },
+      select: { id: true }
+    });
+
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const history = await getLinkedInPostingHistory(user.id, limit);
+
+    res.json({
+      success: true,
+      posts: history,
+      total: history.length
+    });
+
+  } catch (error) {
+    console.error('LinkedIn history error:', error);
+    res.status(500).json({
+      error: 'Failed to get LinkedIn posting history',
+      details: error.message
+    });
+  }
+});
+
+/**
+ * Get LinkedIn posting statistics
+ */
+router.get('/stats', requireAuth, async (req, res) => {
+  try {
+    const clerkId = getUserId(req);
+    const days = parseInt(req.query.days) || 30;
+
+    const user = await prisma.user.findUnique({
+      where: { clerkId },
+      select: { id: true }
+    });
+
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const stats = await getLinkedInPostingStats(user.id, days);
+
+    res.json({
+      success: true,
+      stats,
+      period: `${days} days`
+    });
+
+  } catch (error) {
+    console.error('LinkedIn stats error:', error);
+    res.status(500).json({
+      error: 'Failed to get LinkedIn posting statistics',
+      details: error.message
     });
   }
 });

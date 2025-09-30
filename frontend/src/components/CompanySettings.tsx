@@ -7,6 +7,7 @@ import { Label } from './ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 import { SchedulingSettings } from './SchedulingSettings';
 import { WebhookIntegrations } from './WebhookIntegrations';
+import { LinkedInConnection } from './LinkedInConnection';
 
 interface CompanySettingsProps {
   onBack?: () => void;
@@ -46,7 +47,18 @@ export const CompanySettings: React.FC<CompanySettingsProps> = ({ onBack }) => {
   } | null>(null);
   const [hookPromptLoading, setHookPromptLoading] = useState(false);
   const [hookPromptSaving, setHookPromptSaving] = useState(false);
-  
+
+  // Image prompt management state
+  const [imagePromptData, setImagePromptData] = useState<{
+    prompt: string;
+    lastGenerated: string;
+    lastModified: string;
+    isCustom: boolean;
+    companyName: string;
+  } | null>(null);
+  const [imagePromptLoading, setImagePromptLoading] = useState(false);
+  const [imagePromptSaving, setImagePromptSaving] = useState(false);
+
   const [showAdvanced, setShowAdvanced] = useState(false);
 
   // Get current company data
@@ -348,6 +360,58 @@ export const CompanySettings: React.FC<CompanySettingsProps> = ({ onBack }) => {
     }
   };
 
+  // Image prompt functions
+  const loadImagePromptData = async () => {
+    setImagePromptLoading(true);
+    try {
+      const data = await companyApi.getImagePrompt();
+      setImagePromptData(data);
+    } catch (error) {
+      console.error('Error loading image prompt:', error);
+      alert('Error loading image prompt data. Please try again.');
+    } finally {
+      setImagePromptLoading(false);
+    }
+  };
+
+  const saveImagePrompt = async (newPrompt: string) => {
+    if (!imagePromptData) return;
+    setImagePromptSaving(true);
+    try {
+      const result = await companyApi.updateImagePrompt(newPrompt);
+      setImagePromptData(prev => prev ? {
+        ...prev,
+        prompt: result.prompt,
+        lastModified: result.lastModified
+      } : null);
+      alert('✅ Image prompt updated successfully!');
+    } catch (error) {
+      console.error('Error saving image prompt:', error);
+      alert('❌ Error saving image prompt. Please try again.');
+    } finally {
+      setImagePromptSaving(false);
+    }
+  };
+
+  const regenerateImagePrompt = async () => {
+    if (!imagePromptData) return;
+    setImagePromptSaving(true);
+    try {
+      const result = await companyApi.regenerateImagePrompt();
+      setImagePromptData(prev => prev ? {
+        ...prev,
+        prompt: result.prompt,
+        lastGenerated: result.lastGenerated
+      } : null);
+      alert('✅ Image prompt regenerated from brand voice!');
+    } catch (error) {
+      console.error('Error regenerating image prompt:', error);
+      alert('❌ Error regenerating image prompt. Please try again.');
+    } finally {
+      setImagePromptSaving(false);
+    }
+  };
+
   // Load prompt data when advanced tab becomes active
   useEffect(() => {
     if (activeTab === 'advanced' && showAdvanced) {
@@ -357,8 +421,11 @@ export const CompanySettings: React.FC<CompanySettingsProps> = ({ onBack }) => {
       if (!hookPromptData) {
         loadHookPromptData();
       }
+      if (!imagePromptData) {
+        loadImagePromptData();
+      }
     }
-  }, [activeTab, showAdvanced, promptData, hookPromptData]);
+  }, [activeTab, showAdvanced, promptData, hookPromptData, imagePromptData]);
 
   if (isLoading) {
     return (
@@ -685,6 +752,7 @@ export const CompanySettings: React.FC<CompanySettingsProps> = ({ onBack }) => {
 
         <TabsContent value="integrations" className="space-y-6">
           <WebhookIntegrations />
+          <LinkedInConnection />
         </TabsContent>
 
         {/* Advanced Tab - Hidden Prompt Settings */}
@@ -814,6 +882,267 @@ export const CompanySettings: React.FC<CompanySettingsProps> = ({ onBack }) => {
                   <div className="text-center py-4">
                     <p className="text-gray-500 text-sm">Failed to load hook prompt</p>
                     <Button onClick={loadHookPromptData} className="mt-2" size="sm">
+                      Retry Loading
+                    </Button>
+                  </div>
+                )}
+              </div>
+
+              {/* Website Visual Analysis Section */}
+              <div className="bg-white border-2 border-green-200 rounded-lg p-6">
+                <h3 className="text-lg font-medium text-gray-900 mb-4">📸 Website Visual Analysis</h3>
+                <p className="text-sm text-gray-600 mb-4">
+                  Analyze your website's visual design to automatically match your brand's look and feel in generated images.
+                </p>
+
+                <div className="space-y-4">
+                  {/* Website URL Input */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Website URL
+                    </label>
+                    <div className="flex gap-2">
+                      <input
+                        type="url"
+                        placeholder="https://www.yourwebsite.com"
+                        className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500"
+                        id="website-url-input"
+                      />
+                      <Button
+                        onClick={async () => {
+                          const input = document.getElementById('website-url-input') as HTMLInputElement;
+                          const url = input?.value;
+                          if (!url) {
+                            alert('Please enter a website URL');
+                            return;
+                          }
+                          try {
+                            setImagePromptSaving(true);
+                            const result = await companyApi.captureScreenshot(url);
+
+                            // Build detailed analysis display
+                            const vs = result.visualStyle;
+                            let analysisDetails = `✅ ${result.message}\n\n`;
+                            analysisDetails += `🎨 DESIGN STYLE: ${vs.designStyle || 'N/A'}\n`;
+                            analysisDetails += `🌈 MOOD & ENERGY: ${vs.mood} (${vs.energyLevel} energy)\n\n`;
+
+                            if (vs.exactColors) {
+                              analysisDetails += `🎯 EXACT COLOR PALETTE:\n`;
+                              if (vs.exactColors.primary) analysisDetails += `• Primary: ${vs.exactColors.primary}\n`;
+                              if (vs.exactColors.secondary) analysisDetails += `• Secondary: ${vs.exactColors.secondary}\n`;
+                              if (vs.exactColors.accent) analysisDetails += `• Accent: ${vs.exactColors.accent}\n`;
+                              if (vs.exactColors.background) analysisDetails += `• Background: ${vs.exactColors.background}\n`;
+                              if (vs.exactColors.text) analysisDetails += `• Text: ${vs.exactColors.text}\n`;
+                              analysisDetails += `\n`;
+                            }
+
+                            if (vs.typography?.style) {
+                              analysisDetails += `📝 TYPOGRAPHY: ${vs.typography.style}\n`;
+                            }
+
+                            if (vs.iconImageryStyle?.primary) {
+                              analysisDetails += `🖼️ IMAGERY STYLE: ${vs.iconImageryStyle.primary}\n`;
+                            }
+
+                            if (vs.keyCharacteristics && vs.keyCharacteristics.length > 0) {
+                              analysisDetails += `\n✨ KEY CHARACTERISTICS:\n`;
+                              vs.keyCharacteristics.forEach((char: string) => {
+                                analysisDetails += `• ${char}\n`;
+                              });
+                            }
+
+                            alert(analysisDetails);
+
+                            // Reload image prompt to see updated analysis
+                            await loadImagePromptData();
+                          } catch (error: any) {
+                            alert(`Failed to capture screenshot: ${error.response?.data?.error || error.message}`);
+                          } finally {
+                            setImagePromptSaving(false);
+                          }
+                        }}
+                        disabled={imagePromptSaving}
+                        className="bg-green-600 hover:bg-green-700 flex items-center"
+                      >
+                        {imagePromptSaving ? (
+                          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                        ) : (
+                          <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+                          </svg>
+                        )}
+                        Capture & Analyze
+                      </Button>
+                    </div>
+                    <p className="text-xs text-gray-500 mt-1">
+                      This will take a screenshot and analyze the visual design using AI
+                    </p>
+                  </div>
+
+                  {/* Or Upload Screenshot */}
+                  <div className="relative">
+                    <div className="absolute inset-0 flex items-center">
+                      <div className="w-full border-t border-gray-300"></div>
+                    </div>
+                    <div className="relative flex justify-center text-sm">
+                      <span className="px-2 bg-white text-gray-500">or upload a screenshot</span>
+                    </div>
+                  </div>
+
+                  <div>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={async (e) => {
+                        const file = e.target.files?.[0];
+                        if (!file) return;
+                        try {
+                          setImagePromptSaving(true);
+                          const result = await companyApi.uploadScreenshot(file);
+
+                          // Build detailed analysis display
+                          const vs = result.visualStyle;
+                          let analysisDetails = `✅ ${result.message}\n\n`;
+                          analysisDetails += `🎨 DESIGN STYLE: ${vs.designStyle || 'N/A'}\n`;
+                          analysisDetails += `🌈 MOOD & ENERGY: ${vs.mood} (${vs.energyLevel} energy)\n\n`;
+
+                          if (vs.exactColors) {
+                            analysisDetails += `🎯 EXACT COLOR PALETTE:\n`;
+                            if (vs.exactColors.primary) analysisDetails += `• Primary: ${vs.exactColors.primary}\n`;
+                            if (vs.exactColors.secondary) analysisDetails += `• Secondary: ${vs.exactColors.secondary}\n`;
+                            if (vs.exactColors.accent) analysisDetails += `• Accent: ${vs.exactColors.accent}\n`;
+                            if (vs.exactColors.background) analysisDetails += `• Background: ${vs.exactColors.background}\n`;
+                            if (vs.exactColors.text) analysisDetails += `• Text: ${vs.exactColors.text}\n`;
+                            analysisDetails += `\n`;
+                          }
+
+                          if (vs.typography?.style) {
+                            analysisDetails += `📝 TYPOGRAPHY: ${vs.typography.style}\n`;
+                          }
+
+                          if (vs.iconImageryStyle?.primary) {
+                            analysisDetails += `🖼️ IMAGERY STYLE: ${vs.iconImageryStyle.primary}\n`;
+                          }
+
+                          if (vs.keyCharacteristics && vs.keyCharacteristics.length > 0) {
+                            analysisDetails += `\n✨ KEY CHARACTERISTICS:\n`;
+                            vs.keyCharacteristics.forEach((char: string) => {
+                              analysisDetails += `• ${char}\n`;
+                            });
+                          }
+
+                          alert(analysisDetails);
+
+                          await loadImagePromptData();
+                        } catch (error: any) {
+                          alert(`Failed to upload screenshot: ${error.response?.data?.error || error.message}`);
+                        } finally {
+                          setImagePromptSaving(false);
+                          e.target.value = '';
+                        }
+                      }}
+                      className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-green-50 file:text-green-700 hover:file:bg-green-100"
+                    />
+                    <p className="text-xs text-gray-500 mt-1">
+                      Upload a screenshot of your website (PNG, JPG, max 5MB)
+                    </p>
+                  </div>
+
+                  <div className="bg-green-50 rounded-lg p-4 text-sm">
+                    <h4 className="font-medium text-green-900 mb-2">What gets analyzed:</h4>
+                    <ul className="text-green-700 space-y-1 text-xs">
+                      <li>• Design mood & energy level</li>
+                      <li>• Color palette & usage</li>
+                      <li>• Typography & visual style</li>
+                      <li>• Composition & layout patterns</li>
+                      <li>• Visual metaphors & imagery</li>
+                    </ul>
+                  </div>
+                </div>
+              </div>
+
+              {/* Image Prompt Section */}
+              <div className="bg-white border-2 border-purple-200 rounded-lg p-6">
+                <h3 className="text-lg font-medium text-gray-900 mb-4">🎨 Image Generation Prompt</h3>
+                {imagePromptLoading ? (
+                  <div className="text-center py-4">
+                    <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-purple-600 mx-auto"></div>
+                    <p className="text-gray-500 mt-2 text-sm">Loading image prompt...</p>
+                  </div>
+                ) : imagePromptData ? (
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+                      <div className="bg-gray-50 p-3 rounded-lg">
+                        <h4 className="font-medium text-gray-900">Company</h4>
+                        <p className="text-gray-600 mt-1">{imagePromptData.companyName}</p>
+                      </div>
+                      <div className="bg-gray-50 p-3 rounded-lg">
+                        <h4 className="font-medium text-gray-900">Last Generated</h4>
+                        <p className="text-gray-600 mt-1">{new Date(imagePromptData.lastGenerated).toLocaleDateString()}</p>
+                      </div>
+                      <div className="bg-gray-50 p-3 rounded-lg">
+                        <h4 className="font-medium text-gray-900">Status</h4>
+                        <p className="text-gray-600 mt-1">{imagePromptData.isCustom ? 'Custom' : 'Auto-generated'}</p>
+                      </div>
+                    </div>
+
+                    <div className="flex justify-between items-center">
+                      <h4 className="text-md font-medium text-gray-900">Image Prompt Content</h4>
+                      <Button
+                        onClick={regenerateImagePrompt}
+                        disabled={imagePromptSaving}
+                        variant="outline"
+                        size="sm"
+                        className="flex items-center"
+                      >
+                        {imagePromptSaving ? (
+                          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-purple-600 mr-2"></div>
+                        ) : (
+                          <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                          </svg>
+                        )}
+                        Regenerate
+                      </Button>
+                    </div>
+
+                    <textarea
+                      value={imagePromptData.prompt}
+                      onChange={(e) => setImagePromptData(prev => prev ? {...prev, prompt: e.target.value} : null)}
+                      rows={8}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 font-mono text-sm"
+                      placeholder="Loading image prompt..."
+                    />
+
+                    <div className="bg-purple-50 rounded-lg p-4">
+                      <h4 className="text-sm font-medium text-purple-900 mb-2">Variable Substitutions</h4>
+                      <div className="text-xs text-purple-700">
+                        <span className="font-mono bg-purple-200 px-1 rounded">{`{hook}`}</span> → The marketing hook text will be inserted here
+                      </div>
+                    </div>
+
+                    <div className="flex justify-end">
+                      <Button
+                        onClick={() => saveImagePrompt(imagePromptData.prompt)}
+                        disabled={imagePromptSaving}
+                        className="flex items-center bg-purple-600 hover:bg-purple-700"
+                      >
+                        {imagePromptSaving ? (
+                          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                        ) : (
+                          <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                          </svg>
+                        )}
+                        Save Image Prompt
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="text-center py-4">
+                    <p className="text-gray-500 text-sm">Failed to load image prompt</p>
+                    <Button onClick={loadImagePromptData} className="mt-2" size="sm">
                       Retry Loading
                     </Button>
                   </div>
