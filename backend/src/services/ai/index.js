@@ -241,20 +241,27 @@ export const generateImage = async (hook, brandColors = [], style = 'professiona
 
     const trimmedOverride = typeof promptOverride === 'string' ? promptOverride.trim() : '';
 
-    const imagePrompt = trimmedOverride || `
-Create a ${style} conceptual illustration representing: "${hook}"
+    // Construct base prompt with EXTREME emphasis on no text
+    const basePrompt = trimmedOverride || `Create a ${style} conceptual illustration representing: "${hook}"
 
 Style requirements:
 - Clean, minimalist design
 - ${colorPrompt}
 - LinkedIn-appropriate
 - Business/technology focused
-- No text overlays
 - High contrast and clarity
-- Abstract or conceptual rather than literal
+- Abstract or conceptual rather than literal`;
 
-The image should be visually appealing and complement a LinkedIn post about this topic.
-`;
+    // Add multiple layers of "no text" instructions to override any default behavior
+    const imagePrompt = `${basePrompt}
+
+CRITICAL REQUIREMENTS - NO EXCEPTIONS:
+DO NOT include any text, words, letters, numbers, labels, captions, titles, or written characters of any kind in this image.
+DO NOT add typography, textual overlays, or linguistic content.
+This must be a purely visual, text-free composition.
+NO TEXT. NO WORDS. NO LETTERS. NO LABELS. VISUAL ONLY.
+
+The image should be visually appealing and complement a LinkedIn post about this topic.`;
 
     const response = await getOpenAIClient().images.generate({
       model: "gpt-image-1",

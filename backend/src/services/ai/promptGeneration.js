@@ -16,7 +16,7 @@ const getAnthropicClient = () => {
 
 const OUTPUT_FORMAT_RULES_BLOCK = `## OUTPUT FORMAT RULES
 - Begin immediately with the first sentence of the LinkedIn post—do not add meta commentary such as "Here's a post"
-- Return only the finished post text followed by a blank line and "Image Prompt: ..." describing a supporting visual in one sentence
+- Return only the finished post text followed by a blank line and "Image Prompt: ..." describing a supporting visual in one sentence (image prompt MUST include "absolutely no text, no words, no letters, no labels")
 - Keep paragraphs between one and three sentences and limit emoji usage to no more than three in the entire post
 - Ensure the penultimate paragraph includes a clear call-to-action or question for the reader
 - Do not include hashtags anywhere in the output`;
@@ -487,7 +487,7 @@ ${OUTPUT_FORMAT_RULES_BLOCK}
 - Brand Voice Summary: {BRAND_VOICE_SUMMARY}
 - Meeting Transcript Excerpt: {TRANSCRIPT_SNIPPET}
 
-Deliver the final LinkedIn post exactly following the OUTPUT FORMAT RULES. Return only the finalized post text followed by a blank line and "Image Prompt: ..." with a single-sentence visual description.`;
+Deliver the final LinkedIn post exactly following the OUTPUT FORMAT RULES. Return only the finalized post text followed by a blank line and "Image Prompt: ..." with a single-sentence visual description (MUST include "absolutely no text, no words, no letters, no labels" as a requirement).`;
 }
 
 /**
@@ -560,8 +560,15 @@ COMPOSITION REQUIREMENTS:
 - Layout: ${visualStyle.layoutPattern || 'Professional, balanced composition'}
 - Visual Metaphors: ${visualStyle.visualMetaphors?.join(', ') || 'Industry-relevant imagery'}
 - Platform: LinkedIn-appropriate professional imagery
-- Technical: High contrast, clear focal points, no text overlays
+- Technical: High contrast, clear focal points
 - Approach: Abstract or conceptual representations that match the brand's design system
+
+CRITICAL REQUIREMENTS - NO EXCEPTIONS:
+DO NOT include any text, words, letters, numbers, labels, captions, titles, or written characters of any kind in this image.
+DO NOT add typography, textual overlays, or linguistic content.
+This must be a purely visual, text-free composition.
+NO TEXT. NO WORDS. NO LETTERS. NO LABELS. VISUAL ONLY.
+ABSOLUTELY NO TEXT, NO WORDS, NO LETTERS, NO CHARACTERS OF ANY KIND IN THE IMAGE.
 
 The image MUST match the exact visual style, colors, and design patterns from the brand's website for perfect brand cohesion.`;
 

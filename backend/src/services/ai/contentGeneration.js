@@ -434,7 +434,7 @@ Craft a LinkedIn post that:
 Write the final post as polished plain text ready to publish on LinkedIn—no JSON, brackets, or section labels. Use short paragraphs for readability, keep emoji usage to a maximum of three, and do not include hashtags anywhere in the post.
 
 After the post, add a blank line followed by:
-Image Prompt: <one-sentence visual description that complements the post>
+Image Prompt: <one-sentence visual description that complements the post - MUST include "absolutely no text, no words, no letters, no labels" as a requirement>
 `;
 
     const completion = await client.messages.create({
