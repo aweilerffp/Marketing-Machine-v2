@@ -360,8 +360,10 @@ CRITICAL: Extract ACTUAL visual characteristics from the screenshot, not inferre
 REQUIRED ANALYSIS:
 
 1. **Exact Color Palette** (CRITICAL):
-   - Extract 3-5 dominant colors as HEX codes (e.g., #FF5733, #2C3E50)
-   - Identify: Primary brand color, Secondary colors, Accent colors, Background colors
+   - Extract 3-5 DISTINCT dominant colors as HEX codes (e.g., #FF5733, #2C3E50)
+   - IMPORTANT: Each color MUST be different. Do not repeat the same color.
+   - Identify: Primary brand color (buttons/CTAs), Secondary color (different from primary), Accent color (highlights/links), Background colors
+   - If only one brand color is visible, look for subtle variations or complementary colors used elsewhere
    - Note color usage: buttons, headings, backgrounds, highlights
 
 2. **Design Style Classification** (pick ONE):

@@ -6,6 +6,7 @@ import crypto from 'crypto';
 import { generateCustomLinkedInPrompt, getCustomLinkedInPrompt, generateCustomHookPrompt, getCustomHookPrompt, generateCustomImagePrompt, getCustomImagePrompt } from '../../services/ai/promptGeneration.js';
 import { captureWebsiteScreenshot, convertScreenshotToBase64, cleanupOldScreenshots } from '../../services/screenshot/capture.js';
 import { analyzeWebsiteVisualStyle } from '../../services/ai/brandVoiceProcessor.js';
+import { analyzeWebsite, isValidUrl } from '../../services/brandExtraction/index.js';
 
 const router = express.Router();
 
@@ -144,24 +145,19 @@ const normalizeBrandVoicePayload = (existingRaw = {}, incomingRaw = {}, fallback
     delete merged.samplePosts;
   }
 
-  const brandColors = sanitizeStringArray(incoming.brandColors, existing.brandColors || existing.colors);
-  if (brandColors.length > 0) {
-    merged.brandColors = brandColors;
-  } else if (Array.isArray(existing.brandColors) && existing.brandColors.length > 0) {
-    merged.brandColors = sanitizeStringArray(existing.brandColors);
-  } else {
-    delete merged.brandColors;
-  }
+  // Normalize colors - handle both 'colors' and 'brandColors'
+  const incomingColors = sanitizeStringArray(incoming.colors || incoming.brandColors);
+  const existingColors = sanitizeStringArray(existing.colors || existing.brandColors);
 
-  const paletteColors = sanitizeStringArray(incoming.colors, brandColors.length > 0 ? brandColors : existing.colors || existing.brandColors);
-  if (paletteColors.length > 0) {
-    merged.colors = paletteColors;
-  } else if (Array.isArray(merged.brandColors) && merged.brandColors.length > 0) {
-    merged.colors = merged.brandColors;
-  } else if (Array.isArray(existing.colors) && existing.colors.length > 0) {
-    merged.colors = sanitizeStringArray(existing.colors);
+  const finalColors = incomingColors.length > 0 ? incomingColors : existingColors;
+
+  if (finalColors.length > 0) {
+    // Store in both fields for compatibility
+    merged.colors = finalColors;
+    merged.brandColors = finalColors;
   } else {
     delete merged.colors;
+    delete merged.brandColors;
   }
 
   merged.keywords = sanitizeStringArray(incoming.keywords, existing.keywords);
@@ -1510,6 +1506,121 @@ router.get('/visual-style', requireAuth, async (req, res) => {
   } catch (error) {
     console.error('Visual style retrieval error:', error);
     res.status(500).json({ error: 'Failed to retrieve visual style' });
+  }
+});
+
+// ===================================================================
+// BRAND EXTRACTION & WEBSITE ANALYSIS
+// ===================================================================
+
+// In-memory storage for analysis jobs (in production, use Redis)
+const analysisJobs = new Map();
+
+/**
+ * Start website analysis
+ * POST /api/company/analyze-website
+ * Body: { url: 'https://example.com' }
+ */
+router.post('/analyze-website', requireAuth, async (req, res) => {
+  console.log('🎯 /analyze-website endpoint HIT with body:', req.body);
+  try {
+    const { url } = req.body;
+
+    if (!url) {
+      return res.status(400).json({ error: 'Website URL is required' });
+    }
+
+    if (!isValidUrl(url)) {
+      return res.status(400).json({ error: 'Invalid URL format' });
+    }
+
+    // Generate job ID
+    const jobId = crypto.randomBytes(16).toString('hex');
+
+    // Initialize job status
+    analysisJobs.set(jobId, {
+      status: 'processing',
+      progress: {
+        step: 'starting',
+        percentage: 0,
+        message: 'Starting analysis...'
+      },
+      startedAt: new Date()
+    });
+
+    console.log(`🔍 Starting brand analysis for ${url} (Job ID: ${jobId})`);
+    console.log('🔧 About to call analyzeWebsite function...');
+
+    // Start analysis in background
+    const analysisPromise = analyzeWebsite(url, (progress) => {
+      // Update job progress
+      const job = analysisJobs.get(jobId);
+      if (job) {
+        job.progress = progress;
+        analysisJobs.set(jobId, job);
+      }
+    });
+
+    console.log('✅ analyzeWebsite promise created');
+
+    analysisPromise
+      .then((result) => {
+        analysisJobs.set(jobId, {
+          status: 'complete',
+          data: result,
+          completedAt: new Date()
+        });
+        console.log(`✅ Analysis complete for job ${jobId}`);
+      })
+      .catch((error) => {
+        analysisJobs.set(jobId, {
+          status: 'failed',
+          error: error.message,
+          failedAt: new Date()
+        });
+        console.error(`❌ Analysis failed for job ${jobId}:`, error);
+      });
+
+    // Return job ID immediately
+    res.json({
+      jobId,
+      status: 'processing',
+      estimatedTime: 30 // seconds
+    });
+
+  } catch (error) {
+    console.error('Analysis start error:', error);
+    res.status(500).json({ error: 'Failed to start website analysis' });
+  }
+});
+
+/**
+ * Get analysis status
+ * GET /api/company/analysis-status/:jobId
+ */
+router.get('/analysis-status/:jobId', requireAuth, async (req, res) => {
+  try {
+    const { jobId } = req.params;
+
+    const job = analysisJobs.get(jobId);
+
+    if (!job) {
+      return res.status(404).json({ error: 'Analysis job not found' });
+    }
+
+    res.json(job);
+
+    // Clean up completed/failed jobs after 5 minutes
+    if (job.status === 'complete' || job.status === 'failed') {
+      setTimeout(() => {
+        analysisJobs.delete(jobId);
+        console.log(`🗑️ Cleaned up analysis job ${jobId}`);
+      }, 5 * 60 * 1000);
+    }
+
+  } catch (error) {
+    console.error('Analysis status error:', error);
+    res.status(500).json({ error: 'Failed to get analysis status' });
   }
 });
 

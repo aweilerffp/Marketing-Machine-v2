@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { useState } from 'react';
 import Navbar from '../components/layout/Navbar';
 import { useUpsertCompany } from '../hooks/useCompany';
+import URLInputStep from '../components/onboarding/URLInputStep';
+import AIFieldPreview from '../components/onboarding/AIFieldPreview';
 
 interface BrandVoiceData {
   tone: string;
@@ -20,12 +22,13 @@ interface BrandVoiceData {
 
 export default function Onboarding() {
   const navigate = useNavigate();
-  const [step, setStep] = useState(1);
+  const [step, setStep] = useState(0); // Now starts at 0 for URL input
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
-  
+  const [analysisData, setAnalysisData] = useState<any>(null); // Store AI analysis results
+
   const upsertCompanyMutation = useUpsertCompany();
-  
+
   const [formData, setFormData] = useState({
     companyName: '',
     industry: '',
@@ -74,6 +77,40 @@ export default function Onboarding() {
     return Object.keys(newErrors).length === 0;
   };
 
+  // Handle analysis completion
+  const handleAnalysisComplete = (data: any) => {
+    console.log('Analysis complete:', data);
+    setAnalysisData(data);
+
+    // Pre-fill form data from analysis
+    setFormData({
+      ...formData,
+      companyName: data.companyName || '',
+      industry: data.industry || '',
+      targetAudience: data.targetAudience || '',
+      contentPillars: data.contentPillars || [],
+      brandVoice: {
+        ...formData.brandVoice,
+        tone: data.brandVoice?.tone?.value || data.brandVoice?.tone || '',
+        personality: data.brandVoice?.personality || [],
+        style: data.brandVoice?.style?.value || data.brandVoice?.style || '',
+        keywords: data.brandVoice?.keywords || [],
+        colors: data.brandVoice?.colors || [],
+        websiteContent: data.websiteContent || '',
+        socialPosts: data.socialContent?.linkedInPosts || []
+      }
+    });
+
+    // Move to step 1 (review)
+    setStep(1);
+  };
+
+  // Handle skip analysis
+  const handleSkipAnalysis = () => {
+    setAnalysisData(null);
+    setStep(1); // Skip to manual entry
+  };
+
   const handleNext = () => {
     if (validateStep(step)) {
       if (step < 6) {
@@ -85,7 +122,7 @@ export default function Onboarding() {
   };
 
   const handleBack = () => {
-    if (step > 1) {
+    if (step > 0) {
       setStep(step - 1);
     }
   };
@@ -110,7 +147,7 @@ export default function Onboarding() {
       };
 
       await upsertCompanyMutation.mutateAsync(companyData);
-      navigate('/dashboard');
+      navigate('/');
     } catch (error) {
       console.error('Onboarding submission failed:', error);
       setErrors({ submit: 'Failed to save company information. Please try again.' });
@@ -157,68 +194,141 @@ export default function Onboarding() {
 
   const renderStep = () => {
     switch (step) {
+      case 0:
+        return (
+          <URLInputStep
+            onAnalysisComplete={handleAnalysisComplete}
+            onSkip={handleSkipAnalysis}
+          />
+        );
+
       case 1:
         return (
           <div className="space-y-6">
+            {/* Warning banner for low confidence */}
+            {analysisData && analysisData.overallConfidence < 0.7 && (
+              <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4">
+                <div className="flex">
+                  <div className="flex-shrink-0">
+                    <svg className="h-5 w-5 text-yellow-400" viewBox="0 0 20 20" fill="currentColor">
+                      <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                    </svg>
+                  </div>
+                  <div className="ml-3">
+                    <p className="text-sm text-yellow-700">
+                      <strong>Low confidence analysis.</strong> We weren't able to gather enough information. Please review all fields carefully before finalizing.
+                    </p>
+                    {analysisData.warnings && analysisData.warnings.length > 0 && (
+                      <ul className="mt-2 text-xs text-yellow-600 list-disc list-inside">
+                        {analysisData.warnings.map((warning: string, i: number) => (
+                          <li key={i}>{warning}</li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {analysisData && (
+              <div className="bg-blue-50 border border-blue-200 rounded-md p-4">
+                <p className="text-sm text-blue-800">
+                  ✨ We analyzed your website and pre-filled the information below. Feel free to edit anything!
+                </p>
+              </div>
+            )}
+
             <div>
               <h2 className="text-2xl font-bold text-gray-900 mb-2">Company Information</h2>
               <p className="text-gray-600">Tell us about your business to personalize your content</p>
             </div>
-            
+
             <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Company Name *
-                </label>
-                <input
-                  type="text"
-                  value={formData.companyName}
-                  onChange={(e) => setFormData({ ...formData, companyName: e.target.value })}
-                  className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                    errors.companyName ? 'border-red-300' : 'border-gray-300'
-                  }`}
-                  placeholder="Enter your company name"
-                />
-                {errors.companyName && (
-                  <p className="text-red-600 text-sm mt-1">{errors.companyName}</p>
-                )}
-              </div>
-              
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Industry *
-                </label>
-                <input
-                  type="text"
-                  value={formData.industry}
-                  onChange={(e) => setFormData({ ...formData, industry: e.target.value })}
-                  className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                    errors.industry ? 'border-red-300' : 'border-gray-300'
-                  }`}
-                  placeholder="e.g., SaaS, E-commerce, Consulting"
-                />
-                {errors.industry && (
-                  <p className="text-red-600 text-sm mt-1">{errors.industry}</p>
-                )}
-              </div>
-              
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Target Audience *
-                </label>
-                <textarea
-                  value={formData.targetAudience}
-                  onChange={(e) => setFormData({ ...formData, targetAudience: e.target.value })}
-                  rows={3}
-                  className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                    errors.targetAudience ? 'border-red-300' : 'border-gray-300'
-                  }`}
-                  placeholder="e.g., B2B SaaS founders, small business owners, marketing professionals..."
-                />
-                {errors.targetAudience && (
-                  <p className="text-red-600 text-sm mt-1">{errors.targetAudience}</p>
-                )}
-              </div>
+              {analysisData ? (
+                <>
+                  <AIFieldPreview
+                    label="Company Name *"
+                    value={formData.companyName}
+                    confidence={analysisData.confidenceScores?.companyName || 0.9}
+                    source="website"
+                    onChange={(value) => setFormData({ ...formData, companyName: value })}
+                    placeholder="Enter your company name"
+                  />
+                  <AIFieldPreview
+                    label="Industry *"
+                    value={formData.industry}
+                    confidence={analysisData.confidenceScores?.industry || 0.7}
+                    source="website"
+                    onChange={(value) => setFormData({ ...formData, industry: value })}
+                    placeholder="e.g., SaaS, E-commerce, Consulting"
+                  />
+                  <AIFieldPreview
+                    label="Target Audience *"
+                    value={formData.targetAudience}
+                    confidence={analysisData.confidenceScores?.targetAudience || 0.7}
+                    source="website"
+                    multiline={true}
+                    onChange={(value) => setFormData({ ...formData, targetAudience: value })}
+                    placeholder="e.g., B2B SaaS founders, small business owners..."
+                  />
+                </>
+              ) : (
+                <>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Company Name *
+                    </label>
+                    <input
+                      type="text"
+                      value={formData.companyName}
+                      onChange={(e) => setFormData({ ...formData, companyName: e.target.value })}
+                      className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                        errors.companyName ? 'border-red-300' : 'border-gray-300'
+                      }`}
+                      placeholder="Enter your company name"
+                    />
+                    {errors.companyName && (
+                      <p className="text-red-600 text-sm mt-1">{errors.companyName}</p>
+                    )}
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Industry *
+                    </label>
+                    <input
+                      type="text"
+                      value={formData.industry}
+                      onChange={(e) => setFormData({ ...formData, industry: e.target.value })}
+                      className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                        errors.industry ? 'border-red-300' : 'border-gray-300'
+                      }`}
+                      placeholder="e.g., SaaS, E-commerce, Consulting"
+                    />
+                    {errors.industry && (
+                      <p className="text-red-600 text-sm mt-1">{errors.industry}</p>
+                    )}
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Target Audience *
+                    </label>
+                    <textarea
+                      value={formData.targetAudience}
+                      onChange={(e) => setFormData({ ...formData, targetAudience: e.target.value })}
+                      rows={3}
+                      className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                        errors.targetAudience ? 'border-red-300' : 'border-gray-300'
+                      }`}
+                      placeholder="e.g., B2B SaaS founders, small business owners, marketing professionals..."
+                    />
+                    {errors.targetAudience && (
+                      <p className="text-red-600 text-sm mt-1">{errors.targetAudience}</p>
+                    )}
+                  </div>
+                </>
+              )}
             </div>
           </div>
         );
@@ -226,37 +336,99 @@ export default function Onboarding() {
       case 2:
         return (
           <div className="space-y-6">
+            {analysisData && analysisData.contentPillars?.length > 0 && (
+              <div className="bg-blue-50 border border-blue-200 rounded-md p-4">
+                <p className="text-sm text-blue-800">
+                  ✨ We suggested these content pillars based on your website. Remove any you don't want and add your own!
+                </p>
+              </div>
+            )}
+
             <div>
               <h2 className="text-2xl font-bold text-gray-900 mb-2">Content Pillars</h2>
               <p className="text-gray-600">What topics should your content focus on? We'll map your meeting insights to these pillars.</p>
             </div>
-            
+
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Add Content Pillars (minimum 2) *
+                  Your Content Pillars (minimum 2) *
                 </label>
-                <textarea
-                  rows={6}
-                  className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                    errors.contentPillars ? 'border-red-300' : 'border-gray-300'
-                  }`}
-                  placeholder="Enter one pillar per line, e.g.:&#10;Product Updates&#10;Industry Insights&#10;Customer Success Stories&#10;Thought Leadership&#10;Company Culture"
-                  onChange={(e) => {
-                    const pillars = e.target.value.split('\n').filter(p => p.trim());
-                    setFormData({ ...formData, contentPillars: pillars });
-                  }}
-                />
+
+                {/* Display current pillars as removable chips */}
+                <div className="mb-3 min-h-[60px] p-3 border border-gray-300 rounded-md bg-gray-50">
+                  {formData.contentPillars.length === 0 ? (
+                    <p className="text-gray-400 text-sm">No pillars added yet. Add some below!</p>
+                  ) : (
+                    <div className="flex flex-wrap gap-2">
+                      {formData.contentPillars.map((pillar, index) => (
+                        <span
+                          key={index}
+                          className="inline-flex items-center px-3 py-1 rounded-full text-sm bg-blue-100 text-blue-800 border border-blue-300"
+                        >
+                          {pillar}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const newPillars = formData.contentPillars.filter((_, i) => i !== index);
+                              setFormData({ ...formData, contentPillars: newPillars });
+                            }}
+                            className="ml-2 text-blue-600 hover:text-blue-800 font-bold"
+                          >
+                            ×
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Input to add new pillars */}
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    placeholder="Add a content pillar (e.g., Product Updates)"
+                    className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        const value = (e.target as HTMLInputElement).value.trim();
+                        if (value && !formData.contentPillars.includes(value)) {
+                          setFormData({
+                            ...formData,
+                            contentPillars: [...formData.contentPillars, value]
+                          });
+                          (e.target as HTMLInputElement).value = '';
+                        }
+                      }
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      const input = e.currentTarget.previousElementSibling as HTMLInputElement;
+                      const value = input.value.trim();
+                      if (value && !formData.contentPillars.includes(value)) {
+                        setFormData({
+                          ...formData,
+                          contentPillars: [...formData.contentPillars, value]
+                        });
+                        input.value = '';
+                      }
+                    }}
+                    className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+                  >
+                    Add
+                  </button>
+                </div>
+                <p className="text-xs text-gray-500 mt-1">Press Enter or click Add to add a pillar</p>
+
                 {errors.contentPillars && (
                   <p className="text-red-600 text-sm mt-1">{errors.contentPillars}</p>
                 )}
+
                 <div className="mt-2">
-                  <p className="text-sm text-gray-500">Current pillars: {formData.contentPillars.length}</p>
-                  {formData.contentPillars.map((pillar, index) => (
-                    <span key={index} className="inline-block bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded-full mr-2 mb-1">
-                      {pillar}
-                    </span>
-                  ))}
+                  <p className="text-sm text-gray-500">Total pillars: {formData.contentPillars.length} {formData.contentPillars.length < 2 && '(need at least 2)'}</p>
                 </div>
               </div>
             </div>
@@ -363,6 +535,11 @@ export default function Onboarding() {
                 <div className="space-y-2">
                   {formData.brandVoice.colors.map((color, index) => (
                     <div key={index} className="flex items-center space-x-2">
+                      <div
+                        className="w-10 h-10 rounded border-2 border-gray-300 flex-shrink-0"
+                        style={{ backgroundColor: color }}
+                        title={color}
+                      ></div>
                       <input
                         type="text"
                         value={color}
@@ -627,62 +804,66 @@ export default function Onboarding() {
           
           <main className="max-w-2xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
             <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-8">
-              {/* Progress Bar */}
-              <div className="mb-8">
-                <div className="flex items-center justify-between text-sm text-gray-600 mb-2">
-                  <span>Step {step} of 6</span>
-                  <span>{Math.round((step / 6) * 100)}% Complete</span>
-                </div>
-                <div className="w-full bg-gray-200 rounded-full h-2">
-                  <div 
-                    className="bg-blue-600 h-2 rounded-full transition-all duration-300"
-                    style={{ width: `${(step / 6) * 100}%` }}
-                  ></div>
-                </div>
+              {/* Progress Bar - Only show if past step 0 */}
+              {step > 0 && (
+                <div className="mb-8">
+                  <div className="flex items-center justify-between text-sm text-gray-600 mb-2">
+                    <span>Step {step} of 6</span>
+                    <span>{Math.round((step / 6) * 100)}% Complete</span>
+                  </div>
+                  <div className="w-full bg-gray-200 rounded-full h-2">
+                    <div
+                      className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                      style={{ width: `${(step / 6) * 100}%` }}
+                    ></div>
+                  </div>
 
-                {/* Step indicators */}
-                <div className="flex justify-between mt-4 text-xs">
-                  <span className={step >= 1 ? 'text-blue-600 font-medium' : 'text-gray-400'}>Company</span>
-                  <span className={step >= 2 ? 'text-blue-600 font-medium' : 'text-gray-400'}>Pillars</span>
-                  <span className={step >= 3 ? 'text-blue-600 font-medium' : 'text-gray-400'}>Voice</span>
-                  <span className={step >= 4 ? 'text-blue-600 font-medium' : 'text-gray-400'}>Assets</span>
-                  <span className={step >= 5 ? 'text-blue-600 font-medium' : 'text-gray-400'}>Examples</span>
-                  <span className={step >= 6 ? 'text-blue-600 font-medium' : 'text-gray-400'}>Schedule</span>
+                  {/* Step indicators */}
+                  <div className="flex justify-between mt-4 text-xs">
+                    <span className={step >= 1 ? 'text-blue-600 font-medium' : 'text-gray-400'}>Company</span>
+                    <span className={step >= 2 ? 'text-blue-600 font-medium' : 'text-gray-400'}>Pillars</span>
+                    <span className={step >= 3 ? 'text-blue-600 font-medium' : 'text-gray-400'}>Voice</span>
+                    <span className={step >= 4 ? 'text-blue-600 font-medium' : 'text-gray-400'}>Assets</span>
+                    <span className={step >= 5 ? 'text-blue-600 font-medium' : 'text-gray-400'}>Examples</span>
+                    <span className={step >= 6 ? 'text-blue-600 font-medium' : 'text-gray-400'}>Schedule</span>
+                  </div>
                 </div>
-              </div>
+              )}
 
               {/* Step Content */}
               {renderStep()}
 
-              {/* Navigation Buttons */}
-              <div className="flex justify-between pt-8">
-                <button
-                  onClick={handleBack}
-                  disabled={step === 1}
-                  className={`px-4 py-2 rounded-md ${
-                    step === 1
-                      ? 'text-gray-400 cursor-not-allowed'
-                      : 'text-gray-700 hover:text-gray-900'
-                  }`}
-                >
-                  Back
-                </button>
-                
-                <button
-                  onClick={handleNext}
-                  disabled={isSubmitting}
-                  className="bg-blue-600 text-white px-6 py-2 rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
-                >
-                  {isSubmitting ? (
-                    <>
-                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                      Setting up...
-                    </>
-                  ) : (
-                    step === 6 ? 'Complete Setup' : 'Next'
-                  )}
-                </button>
-              </div>
+              {/* Navigation Buttons - Only show for steps 1-6 */}
+              {step > 0 && (
+                <div className="flex justify-between pt-8">
+                  <button
+                    onClick={handleBack}
+                    disabled={step === 1}
+                    className={`px-4 py-2 rounded-md ${
+                      step === 1
+                        ? 'text-gray-400 cursor-not-allowed'
+                        : 'text-gray-700 hover:text-gray-900'
+                    }`}
+                  >
+                    Back
+                  </button>
+
+                  <button
+                    onClick={handleNext}
+                    disabled={isSubmitting}
+                    className="bg-blue-600 text-white px-6 py-2 rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
+                  >
+                    {isSubmitting ? (
+                      <>
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                        Setting up...
+                      </>
+                    ) : (
+                      step === 6 ? 'Complete Setup' : 'Next'
+                    )}
+                  </button>
+                </div>
+              )}
             </div>
           </main>
         </div>

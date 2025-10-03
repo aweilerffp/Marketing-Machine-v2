@@ -6,7 +6,7 @@ import ErrorBoundary from './ErrorBoundary';
 import { companyApi } from './services/api';
 import { ContentQueue } from './components/ContentQueue';
 import { FactoryFloor } from './components/FactoryFloor';
-import { BrandVoiceOnboarding } from './components/onboarding/BrandVoiceOnboarding';
+import Onboarding from './pages/Onboarding';
 import { AuthProvider, useAuth } from './components/auth/AuthProvider';
 import { Navigation } from './components/Navigation';
 import { CompanySettings } from './components/CompanySettings';
@@ -125,26 +125,7 @@ function MainDashboard() {
 
   if (!isOnboarded) {
     return (
-      <div className="min-h-screen bg-gray-50">
-        <Navigation currentPage="onboarding" onNavigate={() => {}} />
-        <div className="max-w-4xl mx-auto py-12 px-4">
-          <div className="text-center mb-8">
-            <h3 className="text-xl font-semibold text-gray-900 mb-2">
-              Complete Your Brand Voice Setup
-            </h3>
-            <p className="text-gray-600">
-              Help us understand your brand voice to generate personalized LinkedIn content.
-            </p>
-          </div>
-          <BrandVoiceOnboarding onComplete={() => {
-            refetchCompany();
-            // Small delay to ensure data is refreshed before checking onboarding status
-            setTimeout(() => {
-              refetchCompany();
-            }, 1000);
-          }} />
-        </div>
-      </div>
+      <Onboarding />
     );
   }
 
