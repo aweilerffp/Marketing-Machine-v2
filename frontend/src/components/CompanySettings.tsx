@@ -5,6 +5,7 @@ import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from './ui/dialog';
 import { SchedulingSettings } from './SchedulingSettings';
 import { WebhookIntegrations } from './WebhookIntegrations';
 import { LinkedInConnection } from './LinkedInConnection';
@@ -58,6 +59,10 @@ export const CompanySettings: React.FC<CompanySettingsProps> = ({ onBack }) => {
   } | null>(null);
   const [imagePromptLoading, setImagePromptLoading] = useState(false);
   const [imagePromptSaving, setImagePromptSaving] = useState(false);
+
+  // Visual analysis dialog state
+  const [showAnalysisDialog, setShowAnalysisDialog] = useState(false);
+  const [analysisResult, setAnalysisResult] = useState<string>('');
 
   const [showAdvanced, setShowAdvanced] = useState(false);
 
@@ -951,7 +956,9 @@ export const CompanySettings: React.FC<CompanySettingsProps> = ({ onBack }) => {
                               });
                             }
 
-                            alert(analysisDetails);
+                            // Show analysis in dialog instead of alert
+                            setAnalysisResult(analysisDetails);
+                            setShowAnalysisDialog(true);
 
                             // Reload image prompt to see updated analysis
                             await loadImagePromptData();
@@ -1032,7 +1039,9 @@ export const CompanySettings: React.FC<CompanySettingsProps> = ({ onBack }) => {
                             });
                           }
 
-                          alert(analysisDetails);
+                          // Show analysis in dialog instead of alert
+                          setAnalysisResult(analysisDetails);
+                          setShowAnalysisDialog(true);
 
                           await loadImagePromptData();
                         } catch (error: any) {
@@ -1328,6 +1337,28 @@ export const CompanySettings: React.FC<CompanySettingsProps> = ({ onBack }) => {
           </p>
         </div>
       </div>
+
+      {/* Visual Analysis Results Dialog */}
+      <Dialog open={showAnalysisDialog} onOpenChange={setShowAnalysisDialog}>
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Visual Style Analysis Results</DialogTitle>
+            <DialogDescription>
+              Analysis complete. You can select and copy any text below.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="mt-4">
+            <pre className="whitespace-pre-wrap font-mono text-sm bg-gray-50 p-4 rounded-lg select-text">
+              {analysisResult}
+            </pre>
+          </div>
+          <div className="mt-4 flex justify-end">
+            <Button onClick={() => setShowAnalysisDialog(false)}>
+              Close
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

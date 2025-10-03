@@ -219,10 +219,15 @@ function generateBrandVoiceSuggestions(completeness) {
  * @returns {Promise<object>} Visual style profile with mood, design language, and visual elements
  */
 export async function analyzeWebsiteVisualStyle(brandVoiceData, screenshotBase64 = null) {
-  // Check if we have cached visual style analysis
-  if (brandVoiceData.visualStyleProfile && brandVoiceData.visualStyleProfile.analyzed) {
-    console.log('📊 Using cached visual style analysis');
+  // Only use cache if NO new screenshot is provided
+  // If screenshotBase64 is provided, always re-analyze to get fresh data
+  if (!screenshotBase64 && brandVoiceData.visualStyleProfile && brandVoiceData.visualStyleProfile.analyzed) {
+    console.log('📊 Using cached visual style analysis (no new screenshot)');
     return brandVoiceData.visualStyleProfile;
+  }
+
+  if (screenshotBase64) {
+    console.log('🔄 New screenshot provided - performing fresh analysis (ignoring cache)');
   }
 
   const client = getAnthropicClient();
