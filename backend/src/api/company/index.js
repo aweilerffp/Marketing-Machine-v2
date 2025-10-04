@@ -450,11 +450,8 @@ router.post('/', requireAuth, async (req, res) => {
       name
     );
 
-    // Clear visual style cache if brand voice is being updated
-    if (hasIncomingBrandVoice && normalizedBrandVoiceData.visualStyleProfile) {
-      console.log('🔄 Clearing cached visual style analysis due to brand voice update');
-      delete normalizedBrandVoiceData.visualStyleProfile;
-    }
+    // Keep visual style profile from onboarding (don't delete it!)
+    // The visualStyleProfile is already in normalizedBrandVoiceData if it came from onboarding
 
     const existingContentPillars = parseContentPillars(existingCompany?.contentPillars);
     const normalizedContentPillarsArray = normalizeContentPillars(
@@ -496,15 +493,22 @@ router.post('/', requireAuth, async (req, res) => {
 
     const shouldGenerateCustomPrompt = hasIncomingBrandVoice && Object.keys(parsedIncomingBrandVoice).length > 0;
 
-    // Generate custom LinkedIn prompt after brand onboarding completion
+    // Generate custom prompts after brand onboarding completion
     if (shouldGenerateCustomPrompt) {
       console.log(`🎯 Triggering custom prompt generation for company: ${company.name}`);
 
-      // Generate custom prompt in background (don't wait for it)
+      // Generate custom LinkedIn prompt in background (don't wait for it)
       generateCustomLinkedInPrompt(company.id).then(() => {
         console.log(`✨ Custom LinkedIn prompt generated for ${company.name}`);
       }).catch(error => {
-        console.error(`❌ Failed to generate custom prompt for ${company.name}:`, error);
+        console.error(`❌ Failed to generate custom LinkedIn prompt for ${company.name}:`, error);
+      });
+
+      // Generate custom image prompt in background (uses cached visual style from onboarding)
+      generateCustomImagePrompt(company.id).then(() => {
+        console.log(`✨ Custom image prompt generated for ${company.name}`);
+      }).catch(error => {
+        console.error(`❌ Failed to generate custom image prompt for ${company.name}:`, error);
       });
     }
 

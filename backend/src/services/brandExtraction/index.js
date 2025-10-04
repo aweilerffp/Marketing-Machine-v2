@@ -38,25 +38,18 @@ export async function analyzeWebsite(url, onProgress = null) {
 
     updateProgress('extracting_colors', 20, 'Extracting brand colors...');
 
-    // Step 2: Find and scrape LinkedIn
-    updateProgress('finding_linkedin', 30, 'Looking for LinkedIn page...');
-    const linkedInData = await findAndScrapeLinkedIn(websiteData.companyName, url);
+    // Steps 2-4: Run LinkedIn, YouTube, and Claude analysis in PARALLEL for speed
+    updateProgress('analyzing_all', 30, 'Analyzing social media and brand voice...');
 
-    updateProgress('scraping_linkedin', 50, linkedInData.linkedInUrl ? 'Scraping LinkedIn posts...' : 'No LinkedIn found, continuing...');
-
-    // Step 3: Find and scrape YouTube
-    updateProgress('finding_youtube', 60, 'Looking for YouTube channel...');
-    const youtubeData = await findAndScrapeYouTube(websiteData.companyName, url);
-
-    updateProgress('scraping_youtube', 75, youtubeData.youtubeUrl ? 'Getting YouTube transcripts...' : 'No YouTube found, continuing...');
-
-    // Step 4: Analyze with GPT-4
-    updateProgress('analyzing_brand', 85, 'Analyzing brand voice with AI...');
-    const analysis = await analyzeWithGPT({
-      websiteData,
-      linkedInData,
-      youtubeData
-    });
+    const [linkedInData, youtubeData, analysis] = await Promise.all([
+      findAndScrapeLinkedIn(websiteData.companyName, url),
+      findAndScrapeYouTube(websiteData.companyName, url),
+      analyzeWithGPT({
+        websiteData,
+        linkedInData: { posts: [], linkedInUrl: null }, // Will be filled later if needed
+        youtubeData: { videos: [], youtubeUrl: null }
+      })
+    ]);
 
     updateProgress('finalizing', 95, 'Finalizing results...');
 
@@ -81,7 +74,9 @@ export async function analyzeWebsite(url, onProgress = null) {
         youtubeUrl: youtubeData.youtubeUrl
       },
       overallConfidence: analysis.overallConfidence,
-      warnings: analysis.warnings || []
+      warnings: analysis.warnings || [],
+      // Include complete visual style profile for image generation
+      visualStyleProfile: websiteData.visualStyleProfile
     };
 
     updateProgress('complete', 100, 'Analysis complete!');
@@ -241,7 +236,9 @@ async function scrapeWebsite(url) {
       description,
       content: content.substring(0, 10000), // Limit content length
       colors,
-      pagesScraped: [url, ...navLinks.slice(0, 3)]
+      pagesScraped: [url, ...navLinks.slice(0, 3)],
+      // Store complete visual style for image generation (no re-analysis needed)
+      visualStyleProfile: visualStyleData
     };
 
   } catch (error) {

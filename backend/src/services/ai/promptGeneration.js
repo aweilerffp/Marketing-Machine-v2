@@ -507,9 +507,15 @@ export async function generateCustomImagePrompt(companyId) {
 
     const brandVoice = processBrandVoice(company.brandVoiceData);
 
-    // Analyze visual style from website content
-    console.log(`🎨 Analyzing visual style for ${company.name}...`);
-    const visualStyle = await analyzeWebsiteVisualStyle(company.brandVoiceData);
+    // Use cached visual style from onboarding, or analyze if not available
+    let visualStyle = brandVoice.visualStyleProfile;
+
+    if (!visualStyle) {
+      console.log(`🎨 No cached visual style found, analyzing for ${company.name}...`);
+      visualStyle = await analyzeWebsiteVisualStyle(company.brandVoiceData);
+    } else {
+      console.log(`✅ Using cached visual style for ${company.name}`);
+    }
 
     // Build detailed color guidance from visual style analysis
     let colorGuidance = '';

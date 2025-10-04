@@ -82,7 +82,7 @@ export default function Onboarding() {
     console.log('Analysis complete:', data);
     setAnalysisData(data);
 
-    // Pre-fill form data from analysis
+    // Pre-fill form data from analysis (including visual style profile for image generation)
     setFormData({
       ...formData,
       companyName: data.companyName || '',
@@ -97,7 +97,8 @@ export default function Onboarding() {
         keywords: data.brandVoice?.keywords || [],
         colors: data.brandVoice?.colors || [],
         websiteContent: data.websiteContent || '',
-        socialPosts: data.socialContent?.linkedInPosts || []
+        socialPosts: data.socialContent?.linkedInPosts || [],
+        visualStyleProfile: data.visualStyleProfile // Save complete visual style for image generation
       }
     });
 
