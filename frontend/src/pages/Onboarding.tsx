@@ -26,6 +26,12 @@ export default function Onboarding() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [analysisData, setAnalysisData] = useState<any>(null); // Store AI analysis results
+  const [setupSteps, setSetupSteps] = useState({
+    savingProfile: false,
+    generatingHooks: false,
+    generatingPosts: false,
+    generatingImages: false
+  });
 
   const upsertCompanyMutation = useUpsertCompany();
 
@@ -152,12 +158,34 @@ export default function Onboarding() {
       };
 
       console.log('📤 Submitting company data:', { name: companyData.name, hasBrandVoice: !!companyData.brandVoiceData });
-      const result = await upsertCompanyMutation.mutateAsync(companyData);
+
+      // Simulate progress steps for better UX
+      setSetupSteps({ savingProfile: true, generatingHooks: false, generatingPosts: false, generatingImages: false });
+
+      // Small delay to show the first step
+      await new Promise(resolve => setTimeout(resolve, 500));
+
+      setSetupSteps({ savingProfile: true, generatingHooks: true, generatingPosts: false, generatingImages: false });
+
+      // Start the actual API call
+      const resultPromise = upsertCompanyMutation.mutateAsync(companyData);
+
+      // Continue showing progress
+      await new Promise(resolve => setTimeout(resolve, 1500));
+      setSetupSteps({ savingProfile: true, generatingHooks: true, generatingPosts: true, generatingImages: false });
+
+      await new Promise(resolve => setTimeout(resolve, 1500));
+      setSetupSteps({ savingProfile: true, generatingHooks: true, generatingPosts: true, generatingImages: true });
+
+      // Wait for actual API call to complete
+      const result = await resultPromise;
+
       console.log('✅ Submission successful, result:', result);
       navigate('/');
     } catch (error) {
       console.error('❌ Onboarding submission failed:', error);
       setErrors({ submit: 'Failed to save company information. Please try again.' });
+      setSetupSteps({ savingProfile: false, generatingHooks: false, generatingPosts: false, generatingImages: false });
     } finally {
       setIsSubmitting(false);
     }
@@ -858,13 +886,29 @@ export default function Onboarding() {
                   <button
                     onClick={handleNext}
                     disabled={isSubmitting}
-                    className="bg-blue-600 text-white px-6 py-2 rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
+                    className="bg-blue-600 text-white px-6 py-3 rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed min-w-[200px]"
                   >
                     {isSubmitting ? (
-                      <>
-                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                        Setting up...
-                      </>
+                      <div className="space-y-1.5">
+                        <div className="flex items-center justify-center text-sm font-medium">
+                          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                          Setting up...
+                        </div>
+                        <div className="space-y-0.5 text-xs text-blue-100">
+                          <div className="flex items-center justify-center">
+                            {setupSteps.savingProfile ? '✓' : '○'} Saving your profile
+                          </div>
+                          <div className="flex items-center justify-center">
+                            {setupSteps.generatingHooks ? '✓' : '○'} Writing marketing hooks
+                          </div>
+                          <div className="flex items-center justify-center">
+                            {setupSteps.generatingPosts ? '✓' : '○'} Creating post templates
+                          </div>
+                          <div className="flex items-center justify-center">
+                            {setupSteps.generatingImages ? '✓' : '○'} Generating image styles
+                          </div>
+                        </div>
+                      </div>
                     ) : (
                       step === 6 ? 'Complete Setup' : 'Next'
                     )}
