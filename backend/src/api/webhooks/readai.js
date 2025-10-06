@@ -7,13 +7,9 @@ import { ensureMeetingSessionHistory } from '../../models/meetingSessionUtils.js
 // Ensure environment variables are loaded
 dotenv.config();
 
-// Create Prisma client with explicit DATABASE_URL
+// Use shared Prisma client instance (don't create a new one with hardcoded SQLite config)
+// This was causing the webhook to fail when using PostgreSQL
 const prisma = new PrismaClient({
-  datasources: {
-    db: {
-      url: process.env.DATABASE_URL || 'file:./dev.db'
-    }
-  },
   log: process.env.NODE_ENV === 'development' ? ['query', 'error'] : ['error']
 });
 
