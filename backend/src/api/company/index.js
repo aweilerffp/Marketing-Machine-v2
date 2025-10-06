@@ -466,17 +466,32 @@ router.post('/', requireAuth, async (req, res) => {
           timezone: 'America/New_York'
         };
 
+    // Check if this is a real brand voice update (has core fields like tone, industry, or targetAudience)
+    const hasCoreFields = parsedIncomingBrandVoice.tone || parsedIncomingBrandVoice.industry || parsedIncomingBrandVoice.targetAudience;
+    const shouldGenerateCustomPrompt = hasIncomingBrandVoice && hasCoreFields;
+
     let company;
     if (existingCompany) {
       // Update existing company
+      // If brand voice is being updated, clear existing custom prompts so they get regenerated
+      const updateData = {
+        name,
+        brandVoiceData: normalizedBrandVoiceData,
+        contentPillars: JSON.stringify(normalizedContentPillarsArray),
+        postingSchedule: normalizedPostingSchedule
+      };
+
+      // Clear prompts if brand voice is being updated - forces regeneration
+      if (shouldGenerateCustomPrompt) {
+        console.log(`🔄 Brand voice updated - clearing existing prompts for regeneration`);
+        updateData.customLinkedInPrompt = null;
+        updateData.customHookPrompt = null;
+        updateData.customImagePrompt = null;
+      }
+
       company = await prisma.company.update({
         where: { userId: user.id },
-        data: {
-          name,
-          brandVoiceData: normalizedBrandVoiceData,
-          contentPillars: JSON.stringify(normalizedContentPillarsArray),
-          postingSchedule: normalizedPostingSchedule
-        }
+        data: updateData
       });
     } else {
       // Create new company
@@ -491,27 +506,33 @@ router.post('/', requireAuth, async (req, res) => {
       });
     }
 
-    const shouldGenerateCustomPrompt = hasIncomingBrandVoice && Object.keys(parsedIncomingBrandVoice).length > 0;
+    console.log('🔍 Prompt generation check:', {
+      hasIncomingBrandVoice,
+      hasCoreFields,
+      parsedKeys: Object.keys(parsedIncomingBrandVoice),
+      shouldGenerate: shouldGenerateCustomPrompt,
+      companyName: company.name
+    });
 
     // Generate custom prompts after brand onboarding completion
+    // Wait for all prompts to generate before returning - ensures they're ready when user navigates to settings
     if (shouldGenerateCustomPrompt) {
-      console.log(`🎯 Triggering custom prompt generation for company: ${company.name}`);
+      console.log(`🎯 Generating custom prompts for company: ${company.name}`);
 
-      // Generate custom LinkedIn prompt in background (don't wait for it)
-      generateCustomLinkedInPrompt(company.id).then(() => {
-        console.log(`✨ Custom LinkedIn prompt generated for ${company.name}`);
-      }).catch(error => {
-        console.error(`❌ Failed to generate custom LinkedIn prompt for ${company.name}:`, error);
-      });
-
-      // Generate custom image prompt in background (uses cached visual style from onboarding)
-      generateCustomImagePrompt(company.id).then(() => {
-        console.log(`✨ Custom image prompt generated for ${company.name}`);
-      }).catch(error => {
-        console.error(`❌ Failed to generate custom image prompt for ${company.name}:`, error);
-      });
+      try {
+        await Promise.all([
+          generateCustomLinkedInPrompt(company.id),
+          generateCustomHookPrompt(company.id),
+          generateCustomImagePrompt(company.id)
+        ]);
+        console.log(`✨ All custom prompts generated for ${company.name}`);
+      } catch (error) {
+        console.error(`❌ Error generating custom prompts for ${company.name}:`, error);
+        // Don't fail the request if prompt generation fails
+      }
     }
 
+    console.log(`📦 Returning company data to frontend: ${company.name}`);
     res.json(company);
   } catch (error) {
     console.error('Company update error:', error);

@@ -124,7 +124,8 @@ Return JSON with:
  */
 export async function generateCustomLinkedInPrompt(companyId) {
   // If no Anthropic key, return basic template
-  if (!anthropic || !process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_API_KEY === 'your_anthropic_api_key_here') {
+  const client = getAnthropicClient();
+  if (!client) {
     console.log('🤖 Using basic prompt template - no Anthropic key configured');
     return getBasicPromptTemplate();
   }
@@ -322,7 +323,8 @@ function getBasicIndustryICP(brandVoiceData) {
  */
 export async function generateCustomHookPrompt(companyId) {
   // If no Anthropic key, return basic template
-  if (!anthropic || !process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_API_KEY === 'your_anthropic_api_key_here') {
+  const client = getAnthropicClient();
+  if (!client) {
     console.log('🤖 Using basic hook prompt template - no Anthropic key configured');
     return getBasicHookPromptTemplate();
   }

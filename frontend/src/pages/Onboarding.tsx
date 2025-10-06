@@ -129,8 +129,12 @@ export default function Onboarding() {
   };
 
   const handleSubmit = async () => {
-    if (!validateStep(step)) return;
-    
+    if (!validateStep(step)) {
+      console.log('❌ Validation failed for step:', step);
+      return;
+    }
+
+    console.log('✅ Starting onboarding submission...');
     setIsSubmitting(true);
     try {
       const companyData = {
@@ -147,10 +151,12 @@ export default function Onboarding() {
         }
       };
 
-      await upsertCompanyMutation.mutateAsync(companyData);
+      console.log('📤 Submitting company data:', { name: companyData.name, hasBrandVoice: !!companyData.brandVoiceData });
+      const result = await upsertCompanyMutation.mutateAsync(companyData);
+      console.log('✅ Submission successful, result:', result);
       navigate('/');
     } catch (error) {
-      console.error('Onboarding submission failed:', error);
+      console.error('❌ Onboarding submission failed:', error);
       setErrors({ submit: 'Failed to save company information. Please try again.' });
     } finally {
       setIsSubmitting(false);

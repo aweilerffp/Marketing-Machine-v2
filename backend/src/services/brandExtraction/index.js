@@ -211,6 +211,7 @@ async function scrapeWebsite(url) {
     // Remove duplicates, white, black, and transparent colors
     const uniqueColors = [...new Set(colorValues)].filter(c =>
       c &&
+      typeof c === 'string' &&
       c !== '#FFFFFF' &&
       c !== '#ffffff' &&
       c !== '#000000' &&
