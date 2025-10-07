@@ -58,7 +58,7 @@ export async function getLinkedInPostingHistory(userId, limit = 10) {
           }
         },
         platformContent: {
-          path: ['linkedin'],
+          path: 'linkedin',
           not: null
         }
       },
@@ -136,7 +136,7 @@ export async function getLinkedInPostingStats(userId, days = 30) {
             }
           },
           platformContent: {
-            path: ['linkedin'],
+            path: 'linkedin',
             not: null
           }
         }
@@ -150,7 +150,7 @@ export async function getLinkedInPostingStats(userId, days = 30) {
             }
           },
           platformContent: {
-            path: ['linkedin'],
+            path: 'linkedin',
             not: null
           },
           publishedAt: {
@@ -167,7 +167,7 @@ export async function getLinkedInPostingStats(userId, days = 30) {
             }
           },
           platformContent: {
-            path: ['linkedin'],
+            path: 'linkedin',
             not: null
           },
           publishedAt: {

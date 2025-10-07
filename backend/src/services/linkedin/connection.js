@@ -13,17 +13,24 @@ import { encryptToken, decryptToken } from '../encryption.js';
 export async function saveLinkedInConnection(userId, accessToken, expiresIn, refreshToken = null, profileData = {}) {
   const expiresAt = new Date(Date.now() + (expiresIn * 1000));
 
+  // Handle both old and new LinkedIn API response formats
+  const platformUserId = profileData.sub || profileData.id;
+  const firstName = profileData.given_name || profileData.firstName?.localized?.en_US || profileData.firstName;
+  const lastName = profileData.family_name || profileData.lastName?.localized?.en_US || profileData.lastName;
+  const profilePicture = profileData.picture || profileData.profilePicture;
+
   const connectionData = {
     userId,
     platform: 'linkedin',
-    platformUserId: profileData.id,
+    platformUserId,
     encryptedToken: encryptToken(accessToken),
     refreshToken: refreshToken ? encryptToken(refreshToken) : null,
     expiresAt,
     connectionMetadata: {
-      firstName: profileData.firstName,
-      lastName: profileData.lastName,
-      profilePicture: profileData.profilePicture,
+      firstName,
+      lastName,
+      profilePicture,
+      email: profileData.email,
       connectedAt: new Date().toISOString()
     }
   };
@@ -115,17 +122,17 @@ export async function getLinkedInProfile(userId) {
   }
 
   try {
-    const response = await axios.get('https://api.linkedin.com/v2/me', {
+    // Use OpenID Connect userinfo endpoint
+    const response = await axios.get('https://api.linkedin.com/v2/userinfo', {
       headers: {
-        'Authorization': `Bearer ${connection.accessToken}`,
-        'X-Restli-Protocol-Version': '2.0.0'
+        'Authorization': `Bearer ${connection.accessToken}`
       }
     });
 
     return response.data;
   } catch (error) {
-    if (error.response?.status === 401) {
-      // Token expired, remove connection
+    if (error.response?.status === 401 || error.response?.status === 403) {
+      // Token expired or invalid, remove connection
       await removeLinkedInConnection(userId);
       throw new Error('LinkedIn token expired');
     }

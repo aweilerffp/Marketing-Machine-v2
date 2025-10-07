@@ -62,14 +62,22 @@ export async function postTextToLinkedIn(accessToken, personUrn, text, visibilit
  */
 export async function getLinkedInPersonUrn(accessToken) {
   try {
-    const response = await axios.get('https://api.linkedin.com/v2/me', {
+    // Use OpenID Connect userinfo endpoint (LinkedIn API v2)
+    const response = await axios.get('https://api.linkedin.com/v2/userinfo', {
       headers: {
-        'Authorization': `Bearer ${accessToken}`,
-        'X-Restli-Protocol-Version': '2.0.0'
+        'Authorization': `Bearer ${accessToken}`
       }
     });
 
-    return `urn:li:person:${response.data.id}`;
+    // Extract person ID from 'sub' claim (format: unique-id or urn)
+    const personId = response.data.sub;
+
+    // If sub is already a URN, return it; otherwise construct one
+    if (personId.startsWith('urn:')) {
+      return personId;
+    }
+
+    return `urn:li:person:${personId}`;
 
   } catch (error) {
     console.error('Error getting LinkedIn person URN:', error.response?.data || error);
@@ -84,21 +92,21 @@ export async function getLinkedInPersonUrn(accessToken) {
  */
 export async function validateLinkedInConnection(accessToken) {
   try {
-    const response = await axios.get('https://api.linkedin.com/v2/me', {
+    // Use OpenID Connect userinfo endpoint (LinkedIn API v2)
+    const response = await axios.get('https://api.linkedin.com/v2/userinfo', {
       headers: {
-        'Authorization': `Bearer ${accessToken}`,
-        'X-Restli-Protocol-Version': '2.0.0'
+        'Authorization': `Bearer ${accessToken}`
       }
     });
 
     return {
       connected: true,
-      personId: response.data.id,
-      name: `${response.data.firstName?.localized?.en_US || ''} ${response.data.lastName?.localized?.en_US || ''}`.trim()
+      personId: response.data.sub,
+      name: response.data.name || `${response.data.given_name || ''} ${response.data.family_name || ''}`.trim()
     };
 
   } catch (error) {
-    if (error.response?.status === 401) {
+    if (error.response?.status === 401 || error.response?.status === 403) {
       return {
         connected: false,
         error: 'Token expired or invalid'

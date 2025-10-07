@@ -11,6 +11,7 @@ import { AuthProvider, useAuth } from './components/auth/AuthProvider';
 import { Navigation } from './components/Navigation';
 import { CompanySettings } from './components/CompanySettings';
 import Dashboard from './pages/Dashboard';
+import LinkedInCallback from './pages/LinkedInCallback';
 
 // Create a client with optimized settings for real-time data
 const queryClient = new QueryClient({
@@ -165,6 +166,7 @@ function App() {
             <Router>
               <Routes>
                 <Route path="/" element={<SimpleLandingPage />} />
+                <Route path="/auth/linkedin/callback" element={<LinkedInCallback />} />
               </Routes>
             </Router>
           </AuthProvider>

@@ -19,13 +19,14 @@ router.use('/', postingRouter);
 // Start LinkedIn OAuth flow
 router.get('/auth', requireAuth, (req, res) => {
   const state = Math.random().toString(36).substring(7);
-  const scope = 'r_liteprofile%20r_emailaddress%20w_member_social';
-  
+  // Updated to LinkedIn API v2 scopes
+  const scope = 'openid%20profile%20email%20w_member_social';
+
   const linkedinAuthUrl = `https://www.linkedin.com/oauth/v2/authorization?response_type=code&client_id=${process.env.LINKEDIN_CLIENT_ID}&redirect_uri=${encodeURIComponent(process.env.LINKEDIN_REDIRECT_URI)}&state=${state}&scope=${scope}`;
-  
+
   // Store state in session/cache for validation
   // TODO: Implement proper state validation
-  
+
   res.json({ authUrl: linkedinAuthUrl });
 });
 
@@ -65,11 +66,10 @@ router.post('/callback', requireAuth, async (req, res) => {
 
     const { access_token, expires_in, refresh_token } = tokenResponse.data;
 
-    // Get LinkedIn profile data
-    const profileResponse = await axios.get('https://api.linkedin.com/v2/me', {
+    // Get LinkedIn profile data using OpenID Connect userinfo endpoint
+    const profileResponse = await axios.get('https://api.linkedin.com/v2/userinfo', {
       headers: {
-        'Authorization': `Bearer ${access_token}`,
-        'X-Restli-Protocol-Version': '2.0.0'
+        'Authorization': `Bearer ${access_token}`
       }
     });
 
@@ -86,8 +86,8 @@ router.post('/callback', requireAuth, async (req, res) => {
       success: true,
       expiresIn: expires_in,
       profile: {
-        name: `${profileResponse.data.firstName?.localized?.en_US || ''} ${profileResponse.data.lastName?.localized?.en_US || ''}`.trim(),
-        id: profileResponse.data.id
+        name: profileResponse.data.name || `${profileResponse.data.given_name || ''} ${profileResponse.data.family_name || ''}`.trim(),
+        id: profileResponse.data.sub
       }
     });
 
@@ -145,7 +145,13 @@ router.delete('/disconnect', requireAuth, async (req, res) => {
       return res.status(404).json({ error: 'User not found' });
     }
 
-    await removeLinkedInConnection(user.id);
+    // Try to remove connection, but don't fail if it doesn't exist
+    try {
+      await removeLinkedInConnection(user.id);
+    } catch (deleteError) {
+      // Connection might not exist, which is fine
+      console.log('No LinkedIn connection to remove for user:', user.id);
+    }
 
     res.json({ success: true, message: 'LinkedIn account disconnected' });
 

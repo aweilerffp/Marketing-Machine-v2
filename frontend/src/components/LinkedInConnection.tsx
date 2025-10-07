@@ -10,6 +10,8 @@ import { LinkedInManualPost } from './LinkedInManualPost';
 export const LinkedInConnection: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [isConnecting, setIsConnecting] = useState(false);
+  const [isTesting, setIsTesting] = useState(false);
+  const [testSuccess, setTestSuccess] = useState(false);
   const [showManualPost, setShowManualPost] = useState(false);
   const queryClient = useQueryClient();
 
@@ -21,7 +23,11 @@ export const LinkedInConnection: React.FC = () => {
   } = useQuery<LinkedInStatus>({
     queryKey: ['linkedin-status'],
     queryFn: linkedinApi.getStatus,
-    retry: 1
+    retry: 1,
+    // Don't show error UI if it's just a "not connected" state
+    meta: {
+      errorPolicy: 'ignore-404'
+    }
   });
 
   // Mutation to disconnect LinkedIn
@@ -62,6 +68,25 @@ export const LinkedInConnection: React.FC = () => {
       setError(error.message || 'Failed to connect to LinkedIn');
     } finally {
       setIsConnecting(false);
+    }
+  };
+
+  // Handle test connection
+  const handleTestConnection = async () => {
+    try {
+      setIsTesting(true);
+      setError(null);
+      setTestSuccess(false);
+
+      await linkedinApi.getProfile();
+
+      setTestSuccess(true);
+      setTimeout(() => setTestSuccess(false), 3000); // Clear success message after 3 seconds
+    } catch (error: any) {
+      console.error('LinkedIn test connection error:', error);
+      setError(error.response?.data?.error || error.message || 'Failed to test LinkedIn connection');
+    } finally {
+      setIsTesting(false);
     }
   };
 
@@ -115,10 +140,10 @@ export const LinkedInConnection: React.FC = () => {
           </div>
         )}
 
-        {statusError && (
-          <div className="p-3 bg-red-50 border border-red-200 rounded-lg flex items-center gap-2 text-red-700">
+        {statusError && !isLoading && (
+          <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-lg flex items-center gap-2 text-yellow-700">
             <AlertCircle className="h-4 w-4" />
-            <span className="text-sm">Failed to load LinkedIn status. Please refresh the page.</span>
+            <span className="text-sm">Connection status unavailable. Click "Clear Connection Data" below if you're experiencing issues.</span>
           </div>
         )}
 
@@ -156,16 +181,34 @@ export const LinkedInConnection: React.FC = () => {
               </div>
             )}
 
+            {/* Test Success Message */}
+            {testSuccess && (
+              <div className="p-3 bg-green-50 border border-green-200 rounded-lg flex items-center gap-2 text-green-700">
+                <CheckCircle className="h-4 w-4" />
+                <span className="text-sm">Connection test successful!</span>
+              </div>
+            )}
+
             {/* Actions */}
             <div className="flex gap-2">
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => linkedinApi.getProfile()}
+                onClick={handleTestConnection}
+                disabled={isTesting}
                 className="flex items-center gap-2"
               >
-                <ExternalLink className="w-4 h-4" />
-                Test Connection
+                {isTesting ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-gray-600 border-t-transparent rounded-full animate-spin" />
+                    Testing...
+                  </>
+                ) : (
+                  <>
+                    <ExternalLink className="w-4 h-4" />
+                    Test Connection
+                  </>
+                )}
               </Button>
               <Button
                 variant="outline"
@@ -248,6 +291,22 @@ export const LinkedInConnection: React.FC = () => {
             >
               <span>Manual Posting</span>
               {showManualPost ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+            </Button>
+          </div>
+        )}
+
+        {/* Debug/Disconnect - Always Available */}
+        {!isConnected && (
+          <div className="pt-4 border-t border-gray-200">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleDisconnect}
+              disabled={disconnectMutation.isPending}
+              className="flex items-center gap-2 text-gray-600 hover:text-red-600"
+            >
+              <Unlink className="w-4 h-4" />
+              {disconnectMutation.isPending ? 'Clearing...' : 'Clear Connection Data'}
             </Button>
           </div>
         )}
