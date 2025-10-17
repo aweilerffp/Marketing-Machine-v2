@@ -1,7 +1,11 @@
 import crypto from 'crypto';
 
 // Use a fixed 32-byte key from environment or generate one
-const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY || crypto.scryptSync('default-key', 'salt', 32);
+// If ENCRYPTION_KEY is set in env, it should be base64-encoded
+const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY
+  ? Buffer.from(process.env.ENCRYPTION_KEY, 'base64')
+  : crypto.scryptSync('default-key', 'salt', 32);
+
 const ALGORITHM = 'aes-256-cbc';
 
 /**

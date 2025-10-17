@@ -1,0 +1,794 @@
+# <!-- Powered by BMAD™ Core -->
+# Pre-Deployment Security Audit for Hetzner VPS Migration
+# Quality Gate Decision
+
+schema: 1
+audit_type: "Pre-Deployment Security Audit"
+deployment_target: "Hetzner VPS"
+gate: "FAIL" # PASS|CONCERNS|FAIL|WAIVED
+status_reason: "Critical security issues must be resolved before production deployment. Active API key exposure and high-severity dependency vulnerabilities require immediate remediation."
+reviewer: "Quinn (Test Architect)"
+updated: "2025-10-14T00:00:00Z"
+
+waiver: { active: false }
+
+# ============================================
+# EXECUTIVE SUMMARY
+# ============================================
+executive_summary: |
+  Pre-deployment security audit completed for Marketing Machine application before
+  Hetzner VPS deployment. The audit identified CRITICAL security concerns that must
+  be addressed before production release.
+
+  **GATE DECISION: FAIL** ❌
+
+  **Key Findings:**
+  - 🔴 CRITICAL: Exposed Anthropic API key in local .env file (must rotate)
+  - 🔴 HIGH: Axios dependency vulnerability (DoS attack vector)
+  - 🟡 MEDIUM: Missing ENCRYPTION_KEY for token encryption (using insecure default)
+  - 🟡 MEDIUM: Auth bypass flag enabled (must disable for production)
+  - 🟡 LOW: Clerk dependency vulnerabilities (3 low-severity issues)
+
+  **Positive Findings:**
+  ✅ No hardcoded secrets in source code
+  ✅ .env files properly excluded from git
+  ✅ Good API key validation middleware
+  ✅ Token encryption implemented (AES-256-CBC)
+  ✅ Proper authentication middleware with Clerk
+
+# ============================================
+# TOP ISSUES - MUST FIX BEFORE DEPLOYMENT
+# ============================================
+top_issues:
+  - id: "SEC-001"
+    severity: high
+    category: "Secret Exposure"
+    finding: "Active Anthropic API key present in backend/.env file"
+    location: "backend/.env:26"
+    details: |
+      The backend/.env file contains what appears to be an active Anthropic API key:
+      ANTHROPIC_API_KEY=sk-ant-api03-Hek7SU5Y... [REDACTED - 108 characters total]
+
+      While the .env file is not committed to git (✅), the key prefix was exposed through:
+      1. Security audit conversation
+      2. Local file access
+      3. Potential backup copies
+
+      NOTE: This key has been ROTATED and REVOKED as of 2025-10-14.
+    suggested_action: |
+      **IMMEDIATE ACTIONS:**
+      1. Rotate the Anthropic API key immediately via Anthropic dashboard
+      2. Generate a new production key with usage limits
+      3. Store new key securely (see recommendations below)
+      4. Update SECURITY_PATTERNS.EXPOSED_PREFIXES in apiKeyValidation.js to block this key
+    references:
+      - "backend/.env:26"
+      - "backend/src/middleware/apiKeyValidation.js:18"
+
+  - id: "DEP-001"
+    severity: high
+    category: "Dependency Vulnerability"
+    finding: "Axios vulnerable to DoS attack (CVE GHSA-4hjh-wcwx-xvwj)"
+    location: "backend/package.json:34"
+    details: |
+      Axios version 1.11.0 is vulnerable to Denial of Service attacks through lack
+      of data size check. CVSS Score: 7.5/10 (High)
+
+      Affected version range: 1.0.0 - 1.11.0
+      Current version: 1.11.0
+    suggested_action: |
+      Update axios to version 1.12.0 or later:
+      ```bash
+      cd backend && npm update axios
+      npm audit fix
+      ```
+    references:
+      - "https://github.com/advisories/GHSA-4hjh-wcwx-xvwj"
+      - "backend/package.json:34"
+
+  - id: "SEC-002"
+    severity: medium
+    category: "Encryption Security"
+    finding: "Missing ENCRYPTION_KEY environment variable - using insecure default"
+    location: "backend/src/services/encryption.js:4"
+    details: |
+      The encryption service falls back to a default key when ENCRYPTION_KEY is not set:
+
+      ```javascript
+      const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY || crypto.scryptSync('default-key', 'salt', 32);
+      ```
+
+      This default key is:
+      1. Predictable and deterministic
+      2. Same across all deployments without explicit ENCRYPTION_KEY
+      3. Can be reverse-engineered from source code
+
+      This is used to encrypt sensitive tokens (LinkedIn OAuth tokens, etc.) stored in the
+      PlatformConnection table.
+    suggested_action: |
+      1. Generate a secure random 32-byte encryption key:
+         ```bash
+         node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
+         ```
+      2. Add to production .env file:
+         ENCRYPTION_KEY="<generated_key>"
+      3. NEVER commit this key to git
+      4. Consider using a secret management service (AWS Secrets Manager, HashiCorp Vault)
+    references:
+      - "backend/src/services/encryption.js:4"
+      - "backend/prisma/schema.prisma:136 (encryptedToken field)"
+
+  - id: "SEC-003"
+    severity: medium
+    category: "Authentication Security"
+    finding: "ALLOW_AUTH_BYPASS=true in backend/.env - must disable for production"
+    location: "backend/.env:16"
+    details: |
+      Development auth bypass is currently enabled:
+      ALLOW_AUTH_BYPASS=true
+
+      This bypasses Clerk authentication and uses DEV_USER_ID instead. While this is
+      properly implemented with warnings in the code, it MUST be disabled for production
+      to prevent unauthorized access.
+    suggested_action: |
+      **Before deployment:**
+      1. Set ALLOW_AUTH_BYPASS=false in production .env
+      2. Ensure CLERK_SECRET_KEY is properly configured for production
+      3. Test authentication flow in staging environment
+      4. Add deployment checklist to verify this setting
+    references:
+      - "backend/.env:16"
+      - "backend/src/middleware/clerk.js:5"
+
+  - id: "DEP-002"
+    severity: low
+    category: "Dependency Vulnerability"
+    finding: "Clerk SDK has 3 low-severity vulnerabilities (cookie parsing)"
+    location: "backend/package.json:31-32"
+    details: |
+      @clerk/clerk-sdk-node (v4.13.23) has transitive dependency on vulnerable cookie package.
+
+      Vulnerabilities:
+      - cookie package accepts out-of-bounds characters in name, path, and domain
+      - CVSS Score: Low severity
+
+      Fix available via major version upgrade to @clerk/clerk-sdk-node@5.1.6
+    suggested_action: |
+      Evaluate upgrade path to Clerk SDK v5:
+      ```bash
+      cd backend
+      npm install @clerk/clerk-sdk-node@5.1.6 @clerk/express@latest
+      ```
+
+      **Note:** This is a major version upgrade - test thoroughly before deploying.
+      Review migration guide: https://clerk.com/docs/upgrade-guides
+    references:
+      - "https://github.com/advisories/GHSA-pxg6-pf52-xh8x"
+      - "backend/package.json:31-32"
+
+# ============================================
+# POSITIVE SECURITY FINDINGS
+# ============================================
+positive_findings:
+  - category: "Secret Management"
+    finding: "No hardcoded secrets in source code"
+    details: "Comprehensive grep scan found no hardcoded API keys, tokens, or credentials in application code. All secrets properly externalized to environment variables."
+
+  - category: "Git Security"
+    finding: ".env files properly excluded from version control"
+    details: ".gitignore correctly excludes all .env and .env.local files. Git history shows no committed secrets (only placeholder examples)."
+
+  - category: "API Key Validation"
+    finding: "Robust API key validation middleware implemented"
+    details: "apiKeyValidation.js provides excellent startup validation, detecting placeholder keys and exposed/revoked key prefixes."
+    location: "backend/src/middleware/apiKeyValidation.js"
+
+  - category: "Token Encryption"
+    finding: "OAuth tokens encrypted at rest"
+    details: "LinkedIn OAuth tokens stored in PlatformConnection table are encrypted using AES-256-CBC before database storage."
+    location: "backend/src/services/encryption.js"
+
+  - category: "Authentication"
+    finding: "Proper authentication middleware with Clerk"
+    details: "Well-implemented auth middleware with controlled development bypass, clear warnings, and production-ready Clerk integration."
+    location: "backend/src/middleware/clerk.js"
+
+# ============================================
+# DATABASE SECURITY
+# ============================================
+database_security:
+  provider: "SQLite (development) / PostgreSQL (production planned)"
+  current_config: "file:./prisma/dev.db"
+  findings:
+    - status: "PASS"
+      detail: "Database connection string properly externalized via DATABASE_URL"
+    - status: "PASS"
+      detail: "No sensitive data in database schema definition"
+    - status: "PASS"
+      detail: "OAuth tokens encrypted before storage in PlatformConnection table"
+    - status: "CONCERNS"
+      detail: "SQLite database files (.db) excluded from git, but copies exist in multiple directories (./dev.db, ./prisma/dev.db, ./prisma/prisma/dev.db)"
+  recommendations:
+    - "Clean up duplicate database files before deployment"
+    - "For production PostgreSQL, use connection pooling (e.g., PgBouncer)"
+    - "Enable SSL/TLS for PostgreSQL connections in production"
+    - "Set up regular database backups on Hetzner VPS"
+
+# ============================================
+# DEPENDENCY AUDIT SUMMARY
+# ============================================
+dependency_audit:
+  backend:
+    total_dependencies: 415
+    vulnerabilities:
+      critical: 0
+      high: 1    # axios DoS vulnerability
+      moderate: 0
+      low: 3     # clerk cookie vulnerabilities
+      total: 4
+    key_packages:
+      - name: "axios"
+        version: "1.11.0"
+        status: "VULNERABLE - HIGH"
+        action: "Update to 1.12.0+"
+      - name: "@clerk/clerk-sdk-node"
+        version: "4.13.23"
+        status: "VULNERABLE - LOW"
+        action: "Consider upgrade to 5.1.6 (major version)"
+      - name: "@anthropic-ai/sdk"
+        version: "0.62.0"
+        status: "OK"
+      - name: "express"
+        version: "5.1.0"
+        status: "OK"
+      - name: "prisma"
+        version: "6.15.0"
+        status: "OK"
+      - name: "bull"
+        version: "4.16.5"
+        status: "OK"
+        notes: "Redis queue system"
+
+  frontend:
+    status: "NOT AUDITED"
+    note: "Frontend directory not accessible during audit - recommend separate frontend security audit"
+
+# ============================================
+# ENVIRONMENT CONFIGURATION REVIEW
+# ============================================
+environment_config:
+  files_reviewed:
+    - ".env.example"
+    - "backend/.env"
+    - "backend/.env.local"
+    - "backend/.env.local.example"
+    - "backend/.env.production.example"
+
+  critical_variables:
+    - name: "DATABASE_URL"
+      status: "OK"
+      notes: "Properly configured for development (SQLite)"
+      production_recommendation: "Use PostgreSQL connection string with SSL"
+
+    - name: "ANTHROPIC_API_KEY"
+      status: "COMPROMISED"
+      notes: "Active key present in .env - must rotate immediately"
+      production_recommendation: "Use new key with usage limits and monitoring"
+
+    - name: "OPENAI_API_KEY"
+      status: "OK"
+      notes: "Set to placeholder REPLACE_WITH_NEW_OPENAI_API_KEY"
+      production_recommendation: "Generate new key if needed for fallback"
+
+    - name: "CLERK_SECRET_KEY"
+      status: "NEEDS_UPDATE"
+      notes: "Currently 'your_clerk_secret_key_here'"
+      production_recommendation: "Use production Clerk instance keys"
+
+    - name: "ENCRYPTION_KEY"
+      status: "MISSING"
+      notes: "Not set - using insecure default"
+      production_recommendation: "Generate and set 32-byte random key"
+
+    - name: "ALLOW_AUTH_BYPASS"
+      status: "ENABLED (dev)"
+      notes: "Currently true for development"
+      production_recommendation: "MUST set to false for production"
+
+    - name: "REDIS_URL"
+      status: "OK"
+      notes: "Configured for localhost"
+      production_recommendation: "Update for production Redis instance"
+
+    - name: "NODE_ENV"
+      status: "OK"
+      notes: "Set to 'development'"
+      production_recommendation: "Set to 'production' on VPS"
+
+    - name: "LINKEDIN_CLIENT_SECRET"
+      status: "OK"
+      notes: "Set to placeholder"
+      production_recommendation: "Use production OAuth credentials"
+
+# ============================================
+# DEPLOYMENT READINESS
+# ============================================
+deployment_readiness:
+  overall_status: "NOT READY"
+  blockers:
+    - "Anthropic API key must be rotated"
+    - "Axios dependency must be updated"
+    - "ENCRYPTION_KEY must be generated and set"
+    - "ALLOW_AUTH_BYPASS must be disabled"
+
+  missing_infrastructure:
+    - name: "Deployment Scripts"
+      status: "NOT FOUND"
+      details: "No Dockerfile, docker-compose.yml, or deployment automation scripts found"
+      recommendation: "Create deployment automation (Docker recommended)"
+
+    - name: "Production Environment Template"
+      status: "MISSING"
+      details: "backend/.env.production.example exists but not at root level"
+      recommendation: "Document all required environment variables for production"
+
+    - name: "CI/CD Pipeline"
+      status: "UNKNOWN"
+      details: "No GitHub Actions, GitLab CI, or similar configurations found"
+      recommendation: "Set up automated security scanning in CI/CD"
+
+    - name: "Process Manager"
+      status: "NOT CONFIGURED"
+      details: "No PM2, systemd, or supervisor configuration found"
+      recommendation: "Configure PM2 or systemd for production Node.js process management"
+
+    - name: "Reverse Proxy"
+      status: "NOT CONFIGURED"
+      details: "No nginx or Apache configuration found"
+      recommendation: "Set up nginx as reverse proxy with SSL/TLS termination"
+
+    - name: "SSL/TLS Certificates"
+      status: "NOT CONFIGURED"
+      details: "No cert-bot or SSL configuration found"
+      recommendation: "Use Let's Encrypt for free SSL certificates"
+
+# ============================================
+# RISK ASSESSMENT
+# ============================================
+risk_summary:
+  totals:
+    critical: 2  # API key exposure + auth bypass
+    high: 1      # Axios vulnerability
+    medium: 1    # Missing ENCRYPTION_KEY
+    low: 3       # Clerk vulnerabilities
+
+  highest_risk_areas:
+    - area: "API Key Management"
+      risk_level: "CRITICAL"
+      details: "Active Anthropic API key exposed; must rotate before deployment"
+
+    - area: "Dependency Security"
+      risk_level: "HIGH"
+      details: "Axios DoS vulnerability allows resource exhaustion attacks"
+
+    - area: "Token Encryption"
+      risk_level: "MEDIUM"
+      details: "Predictable encryption key compromises OAuth token security"
+
+    - area: "Authentication"
+      risk_level: "MEDIUM"
+      details: "Auth bypass enabled; must disable for production"
+
+  recommendations:
+    must_fix:
+      - action: "Rotate Anthropic API key immediately"
+        priority: "P0 - BLOCKER"
+        estimated_effort: "15 minutes"
+
+      - action: "Update axios to 1.12.0 or later"
+        priority: "P0 - BLOCKER"
+        estimated_effort: "5 minutes"
+
+      - action: "Generate and set ENCRYPTION_KEY"
+        priority: "P0 - BLOCKER"
+        estimated_effort: "10 minutes"
+
+      - action: "Disable ALLOW_AUTH_BYPASS for production"
+        priority: "P0 - BLOCKER"
+        estimated_effort: "2 minutes"
+
+      - action: "Clean up duplicate database files"
+        priority: "P1 - HIGH"
+        estimated_effort: "5 minutes"
+
+    monitor:
+      - action: "Evaluate Clerk SDK upgrade to v5"
+        priority: "P2 - MEDIUM"
+        estimated_effort: "2-4 hours (testing required)"
+
+      - action: "Set up dependency scanning in CI/CD"
+        priority: "P2 - MEDIUM"
+        estimated_effort: "1 hour"
+
+      - action: "Implement API key usage monitoring/alerts"
+        priority: "P2 - MEDIUM"
+        estimated_effort: "2 hours"
+
+# ============================================
+# DEPLOYMENT CHECKLIST
+# ============================================
+pre_deployment_checklist:
+  security:
+    - task: "✅ Rotate Anthropic API key"
+      status: "REQUIRED"
+
+    - task: "✅ Generate new ENCRYPTION_KEY (32 bytes random)"
+      status: "REQUIRED"
+
+    - task: "✅ Set ALLOW_AUTH_BYPASS=false"
+      status: "REQUIRED"
+
+    - task: "✅ Configure production Clerk keys"
+      status: "REQUIRED"
+
+    - task: "✅ Update axios dependency"
+      status: "REQUIRED"
+
+    - task: "✅ Verify .env not copied to VPS"
+      status: "REQUIRED"
+
+    - task: "✅ Set up secret management (environment variables on VPS)"
+      status: "REQUIRED"
+
+  infrastructure:
+    - task: "⬜ Set up PostgreSQL database on Hetzner"
+      status: "RECOMMENDED"
+
+    - task: "⬜ Configure Redis for production"
+      status: "REQUIRED"
+
+    - task: "⬜ Install and configure nginx reverse proxy"
+      status: "REQUIRED"
+
+    - task: "⬜ Set up SSL/TLS certificates (Let's Encrypt)"
+      status: "REQUIRED"
+
+    - task: "⬜ Configure PM2 for process management"
+      status: "RECOMMENDED"
+
+    - task: "⬜ Set up log aggregation and monitoring"
+      status: "RECOMMENDED"
+
+    - task: "⬜ Configure firewall rules (UFW recommended)"
+      status: "REQUIRED"
+
+    - task: "⬜ Set up automated backups"
+      status: "REQUIRED"
+
+  testing:
+    - task: "⬜ Test authentication flow in production config"
+      status: "REQUIRED"
+
+    - task: "⬜ Test LinkedIn OAuth integration"
+      status: "REQUIRED"
+
+    - task: "⬜ Test Read.ai webhook integration"
+      status: "REQUIRED"
+
+    - task: "⬜ Load testing for expected traffic"
+      status: "RECOMMENDED"
+
+    - task: "⬜ Security scan of production environment"
+      status: "RECOMMENDED"
+
+# ============================================
+# RECOMMENDATIONS FOR HETZNER VPS DEPLOYMENT
+# ============================================
+hetzner_deployment_recommendations:
+  server_requirements:
+    - "Minimum 2GB RAM (4GB recommended for Redis + Node.js)"
+    - "20GB SSD storage minimum"
+    - "Ubuntu 22.04 LTS or Debian 12 recommended"
+
+  security_hardening:
+    - title: "SSH Security"
+      actions:
+        - "Disable root SSH login"
+        - "Use SSH key authentication only"
+        - "Change default SSH port (optional but recommended)"
+        - "Install and configure fail2ban"
+
+    - title: "Firewall Configuration"
+      actions:
+        - "Install UFW (Uncomplicated Firewall)"
+        - "Allow ports: 22 (SSH), 80 (HTTP), 443 (HTTPS)"
+        - "Deny all other incoming traffic by default"
+        - "Configure rate limiting for HTTP(S)"
+
+    - title: "SSL/TLS"
+      actions:
+        - "Install certbot for Let's Encrypt"
+        - "Configure automatic certificate renewal"
+        - "Use modern TLS configuration (TLS 1.2+ only)"
+        - "Enable HSTS headers"
+
+    - title: "Application Security"
+      actions:
+        - "Run application as non-root user"
+        - "Use environment variables for all secrets (never .env files)"
+        - "Enable helmet middleware security headers"
+        - "Configure CORS properly for your frontend domain"
+        - "Set up log rotation (logrotate)"
+
+    - title: "Database Security"
+      actions:
+        - "Use PostgreSQL with strong password"
+        - "Disable remote PostgreSQL access (localhost only)"
+        - "Enable SSL for PostgreSQL connections"
+        - "Regular automated backups with encryption"
+
+    - title: "Monitoring & Alerts"
+      actions:
+        - "Set up uptime monitoring (UptimeRobot, Pingdom, etc.)"
+        - "Configure error alerting (Sentry, LogRocket, etc.)"
+        - "Monitor API key usage and set billing alerts"
+        - "Set up server resource monitoring (CPU, memory, disk)"
+
+  deployment_script_template: |
+    # Recommended deployment script structure:
+
+    1. Server Setup:
+       - Update system packages
+       - Install Node.js 20 LTS
+       - Install PostgreSQL
+       - Install Redis
+       - Install nginx
+       - Install certbot
+       - Configure firewall (UFW)
+
+    2. Application Deployment:
+       - Create application user (non-root)
+       - Clone repository (or copy built artifacts)
+       - Install dependencies (npm ci --production)
+       - Run Prisma migrations
+       - Set environment variables securely
+       - Configure PM2 ecosystem file
+       - Start application with PM2
+       - Configure PM2 startup script
+
+    3. Reverse Proxy:
+       - Configure nginx for reverse proxy
+       - Set up SSL with certbot
+       - Enable gzip compression
+       - Configure security headers
+       - Set up rate limiting
+
+    4. Monitoring:
+       - Enable PM2 monitoring
+       - Configure log rotation
+       - Set up external uptime monitoring
+       - Configure error tracking
+
+# ============================================
+# SECURE SECRETS MANAGEMENT GUIDE
+# ============================================
+secrets_management_guide:
+  overview: "NEVER copy .env files to production. Use one of these methods:"
+
+  methods:
+    - name: "Environment Variables (Recommended for Hetzner VPS)"
+      description: "Set environment variables in PM2 ecosystem file or systemd service"
+      example: |
+        # PM2 ecosystem.config.js
+        module.exports = {
+          apps: [{
+            name: 'marketing-machine',
+            script: './src/server.js',
+            env_production: {
+              NODE_ENV: 'production',
+              DATABASE_URL: 'postgresql://user:pass@localhost:5432/db',
+              ANTHROPIC_API_KEY: 'sk-ant-...',
+              ENCRYPTION_KEY: 'base64encodedkey...',
+              CLERK_SECRET_KEY: 'sk_live_...',
+              // ... other secrets
+            }
+          }]
+        }
+      pros:
+        - "Simple for single-server deployments"
+        - "No additional infrastructure needed"
+        - "Easy to update with PM2 reload"
+      cons:
+        - "Secrets visible in process list (use PM2 instead of direct env)"
+        - "No built-in secret rotation"
+
+    - name: "Docker Secrets (If using Docker)"
+      description: "Use Docker secrets for containerized deployments"
+      example: |
+        # docker-compose.yml
+        services:
+          app:
+            image: marketing-machine:latest
+            secrets:
+              - anthropic_api_key
+              - encryption_key
+
+        secrets:
+          anthropic_api_key:
+            file: ./secrets/anthropic_key.txt
+          encryption_key:
+            file: ./secrets/encryption_key.txt
+
+    - name: "HashiCorp Vault (Advanced)"
+      description: "Enterprise-grade secret management with automatic rotation"
+      note: "Requires additional infrastructure - overkill for small deployments"
+
+    - name: "Cloud Secret Managers (If using cloud)"
+      description: "AWS Secrets Manager, Google Secret Manager, etc."
+      note: "Not applicable for Hetzner VPS unless hybrid cloud"
+
+  best_practices:
+    - "Use unique secrets for each environment (dev/staging/production)"
+    - "Rotate API keys regularly (quarterly minimum)"
+    - "Monitor API key usage for anomalies"
+    - "Set up billing alerts for API usage"
+    - "Use separate database credentials for each service/environment"
+    - "Never log or display secrets in application code"
+    - "Use .env files ONLY for local development"
+    - "Document all required secrets in .env.example files"
+
+# ============================================
+# GATE DECISION RATIONALE
+# ============================================
+decision_rationale: |
+  **GATE: FAIL** ❌
+
+  This application CANNOT be deployed to production until critical security
+  issues are resolved. The gate decision is based on:
+
+  **Blocking Issues (P0):**
+  1. **API Key Compromise**: Active Anthropic API key is exposed and must be
+     rotated immediately. Deployment with this key would risk unauthorized
+     usage and potential service disruption.
+
+  2. **High-Severity Vulnerability**: Axios DoS vulnerability (CVSS 7.5) could
+     allow attackers to exhaust server resources. This is a production-critical
+     security fix.
+
+  3. **Weak Encryption**: Default encryption key compromises OAuth token security.
+     If tokens are intercepted, they could be decrypted using the predictable key.
+
+  4. **Authentication Bypass**: While properly implemented for development, the
+     ALLOW_AUTH_BYPASS flag MUST be disabled for production to prevent unauthorized
+     access.
+
+  **Estimated Remediation Time:**
+  - Fix all P0 blockers: ~30 minutes
+  - Complete deployment infrastructure: 4-8 hours
+  - Full production deployment with testing: 1-2 days
+
+  **Once P0 issues are resolved, the gate can be re-evaluated to CONCERNS or PASS.**
+
+  The codebase shows good security practices overall (no hardcoded secrets,
+  proper authentication, token encryption). The issues found are primarily
+  configuration and dependency-related, which are straightforward to fix.
+
+# ============================================
+# NEXT STEPS
+# ============================================
+next_steps:
+  immediate:
+    - step: 1
+      action: "Rotate Anthropic API key"
+      owner: "Developer"
+      details: |
+        1. Go to Anthropic Console: https://console.anthropic.com/settings/keys
+        2. Delete/disable the exposed key
+        3. Generate new API key with usage limits
+        4. Update backend/.env.local (for development)
+        5. Add to SECURITY_PATTERNS.EXPOSED_PREFIXES in apiKeyValidation.js
+
+    - step: 2
+      action: "Update axios dependency"
+      owner: "Developer"
+      details: |
+        cd backend
+        npm update axios
+        npm audit
+        npm test (verify no breaking changes)
+
+    - step: 3
+      action: "Generate ENCRYPTION_KEY"
+      owner: "Developer"
+      details: |
+        # Generate key:
+        node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
+
+        # Add to backend/.env.local for testing:
+        ENCRYPTION_KEY="<generated_base64_key>"
+
+        # Store securely for production deployment
+
+    - step: 4
+      action: "Create production deployment plan"
+      owner: "Developer/DevOps"
+      details: "Document Hetzner VPS setup steps, create deployment scripts"
+
+  before_deployment:
+    - "Complete pre-deployment checklist (see above)"
+    - "Set up staging environment for testing"
+    - "Run full integration tests with production-like configuration"
+    - "Conduct second security audit after fixes applied"
+
+  post_deployment:
+    - "Monitor application logs for errors"
+    - "Monitor API usage and costs"
+    - "Set up automated backup verification"
+    - "Schedule dependency audit (monthly)"
+    - "Plan Clerk SDK upgrade (if needed)"
+
+# ============================================
+# AUDIT METADATA
+# ============================================
+audit_metadata:
+  conducted_by: "Quinn (Test Architect & Quality Advisor)"
+  audit_date: "2025-10-14"
+  audit_duration: "~45 minutes"
+  scope: "Pre-deployment security audit for Hetzner VPS migration"
+  methodology: |
+    1. Secret detection scan (grep for API keys, tokens, credentials)
+    2. Git history analysis (check for committed secrets)
+    3. Environment variable review (.env files, configuration)
+    4. Dependency vulnerability scan (npm audit)
+    5. Authentication and authorization review
+    6. Database security assessment
+    7. Deployment readiness evaluation
+
+  tools_used:
+    - "grep/ripgrep for secret detection"
+    - "git log for history analysis"
+    - "npm audit for dependency scanning"
+    - "Manual code review of security-critical files"
+
+  files_reviewed:
+    - ".gitignore"
+    - ".env, backend/.env, backend/.env.local"
+    - "backend/src/middleware/clerk.js"
+    - "backend/src/middleware/apiKeyValidation.js"
+    - "backend/src/services/encryption.js"
+    - "backend/prisma/schema.prisma"
+    - "backend/package.json"
+    - "Various configuration and script files"
+
+  limitations:
+    - "Frontend security audit not completed (directory inaccessible)"
+    - "Runtime security testing not performed"
+    - "Production infrastructure not yet deployed (cannot audit)"
+    - "Database not accessible during audit (empty/not created)"
+
+# ============================================
+# ADDITIONAL RESOURCES
+# ============================================
+resources:
+  security_guides:
+    - title: "OWASP Top 10"
+      url: "https://owasp.org/www-project-top-ten/"
+    - title: "Node.js Security Best Practices"
+      url: "https://nodejs.org/en/docs/guides/security/"
+    - title: "Express Security Best Practices"
+      url: "https://expressjs.com/en/advanced/best-practice-security.html"
+
+  hetzner_guides:
+    - title: "Hetzner VPS Initial Server Setup"
+      url: "https://community.hetzner.com/tutorials/initial-server-setup"
+    - title: "Securing Ubuntu Server"
+      url: "https://ubuntu.com/server/docs/security-introduction"
+
+  deployment_tools:
+    - "PM2: https://pm2.keymetrics.io/"
+    - "Let's Encrypt: https://letsencrypt.org/"
+    - "fail2ban: https://www.fail2ban.org/"
+    - "UFW Firewall: https://help.ubuntu.com/community/UFW"
+
+---
+# End of Security Audit Report

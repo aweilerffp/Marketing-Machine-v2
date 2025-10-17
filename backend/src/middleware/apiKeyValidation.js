@@ -15,7 +15,10 @@ const SECURITY_PATTERNS = {
   ],
   EXPOSED_PREFIXES: [
     'sk-proj-4tpMP1if',  // Revoked OpenAI key prefix
-    'sk-ant-api03-xqYt'  // Revoked Anthropic key prefix
+    'sk-proj-QLd-MlHgE9VB', // Revoked OpenAI key prefix (2025-10-14 - exposed in .env.local)
+    'sk-ant-api03-xqYt', // Revoked Anthropic key prefix (2025-09)
+    'sk-ant-api03-Hek7SU5Y', // Revoked Anthropic key prefix (2025-10-14 - exposed in .env)
+    'sk-ant-api03-D75nS' // Revoked Anthropic key prefix (2025-10-14 - exposed in .env.local)
   ]
 };
 
