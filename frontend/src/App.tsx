@@ -12,6 +12,7 @@ import { Navigation } from './components/Navigation';
 import { CompanySettings } from './components/CompanySettings';
 import Dashboard from './pages/Dashboard';
 import LinkedInCallback from './pages/LinkedInCallback';
+import StatusPage from './pages/StatusPage';
 
 // Create a client with optimized settings for real-time data
 const queryClient = new QueryClient({
@@ -141,6 +142,8 @@ function MainDashboard() {
             <ContentQueue />
           </div>
         );
+      case 'status':
+        return <StatusPage />;
       case 'settings':
         return <CompanySettings onBack={() => setCurrentPage('dashboard')} />;
       case 'dashboard':

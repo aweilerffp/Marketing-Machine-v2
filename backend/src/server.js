@@ -19,6 +19,7 @@ import authRouter from './api/auth/index.js';
 import companyRouter from './api/company/index.js';
 import contentRouter from './api/content/index.js';
 import linkedinRouter from './api/linkedin/index.js';
+import statusRouter from './api/status/index.js';
 
 // Import security validation
 import { validateEnvironmentKeys, apiKeySecurityMiddleware } from './middleware/apiKeyValidation.js';
@@ -87,6 +88,7 @@ app.use('/api/auth', authRouter);
 app.use('/api/company', companyRouter);
 app.use('/api/content', contentRouter);
 app.use('/api/linkedin', linkedinRouter);
+app.use('/api/status', statusRouter);
 
 // Global error handler
 app.use((err, req, res, next) => {

@@ -11,8 +11,13 @@ export const ensureMeetingSessionHistory = async (client) => {
   }
 
   const ensurePromise = (async () => {
-    const columns = await client.$queryRawUnsafe('PRAGMA table_info("Meeting")');
-    const columnNames = columns.map(col => col.name);
+    // PostgreSQL-compatible column check (instead of SQLite's PRAGMA)
+    const columns = await client.$queryRawUnsafe(`
+      SELECT column_name
+      FROM information_schema.columns
+      WHERE table_name = 'Meeting';
+    `);
+    const columnNames = columns.map(col => col.column_name);
 
     const missingSourceSession = !columnNames.includes('sourceSessionId');
     const missingSequence = !columnNames.includes('sessionSequence');

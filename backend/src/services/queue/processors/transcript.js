@@ -54,6 +54,8 @@ export const processTranscript = async (job) => {
     console.log(`🗄️  DATABASE_URL: ${process.env.DATABASE_URL}`);
     console.log(`📝 Meeting title: ${title}`);
     console.log(`📊 Transcript length: ${transcript?.length || 0} characters`);
+    console.log(`🔍 DEBUG: Received companyId from webhook: ${companyId || 'NULL'}`);
+    console.log(`🔍 DEBUG: Received companyName from webhook: ${companyName || 'NULL'}`);
 
     // Step 1: Find company using priority-based resolution
     let company = null;

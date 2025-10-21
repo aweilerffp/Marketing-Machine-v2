@@ -444,7 +444,15 @@ Return ONLY valid JSON, no other text.`;
     });
 
     const analysisText = response.content[0].text;
-    const analysis = JSON.parse(analysisText);
+
+    // Strip markdown code fences if present (```json or ```)
+    const cleanedText = analysisText
+      .replace(/^```json\s*/i, '')
+      .replace(/^```\s*/, '')
+      .replace(/\s*```$/, '')
+      .trim();
+
+    const analysis = JSON.parse(cleanedText);
 
     // Transform nested confidence objects to simple values
     return {

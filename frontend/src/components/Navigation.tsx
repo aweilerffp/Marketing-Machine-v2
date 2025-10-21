@@ -11,6 +11,7 @@ export const Navigation: React.FC<NavigationProps> = ({ currentPage = 'dashboard
     { id: 'dashboard', label: 'Dashboard', icon: '🏠' },
     { id: 'factory', label: 'Factory Floor', icon: '🏭' },
     { id: 'content', label: 'Content Queue', icon: '📝' },
+    { id: 'status', label: 'Status', icon: '🟢' },
     { id: 'settings', label: 'Settings', icon: '⚙️' }
   ];
 
