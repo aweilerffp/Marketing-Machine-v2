@@ -33,9 +33,10 @@ interface MeetingCardProps {
   meeting: Meeting
   onReprocess: (meetingId: string) => void
   onDelete: (meetingId: string) => void
+  isReprocessing?: boolean
 }
 
-export function MeetingCard({ meeting, onReprocess, onDelete }: MeetingCardProps) {
+export function MeetingCard({ meeting, onReprocess, onDelete, isReprocessing = false }: MeetingCardProps) {
   const [showHooksModal, setShowHooksModal] = useState(false)
 
   const formatDate = (dateString: string) => {
@@ -145,14 +146,15 @@ export function MeetingCard({ meeting, onReprocess, onDelete }: MeetingCardProps
 
       <CardFooter className="pt-3">
         <div className="flex gap-2 w-full">
-          <Button 
-            variant="outline" 
-            size="sm" 
+          <Button
+            variant="outline"
+            size="sm"
             onClick={() => onReprocess(meeting.id)}
             className="flex-1"
+            disabled={isReprocessing}
           >
-            <RotateCcw className="h-4 w-4 mr-2" />
-            Reprocess
+            <RotateCcw className={`h-4 w-4 mr-2 ${isReprocessing ? 'animate-spin' : ''}`} />
+            {isReprocessing ? 'Reprocessing...' : 'Reprocess'}
           </Button>
           <Button 
             variant="outline" 

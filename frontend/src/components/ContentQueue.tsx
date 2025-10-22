@@ -29,6 +29,7 @@ export function ContentQueue() {
   const reprocessMeetingMutation = useReprocessMeeting()
   const deleteMeetingMutation = useDeleteMeeting()
   const [isRefreshing, setIsRefreshing] = useState(false)
+  const [reprocessingMeetingId, setReprocessingMeetingId] = useState<string | null>(null)
   
   // Optimized mutations
   const updatePostStatusMutation = useUpdatePostStatus()
@@ -149,13 +150,19 @@ export function ContentQueue() {
   }
 
   const handleReprocess = async (meetingId: string) => {
+    setReprocessingMeetingId(meetingId)
     try {
       await reprocessMeetingMutation.mutateAsync(meetingId)
       // Posts will be reloaded automatically via React Query invalidation
       console.log("✅ Meeting reprocessing started")
+      // Show success feedback
+      alert("Meeting queued for reprocessing! It will appear as 'Processing' shortly and complete in a few moments.")
     } catch (err) {
       const apiError = handleApiError(err)
       console.error("❌ Failed to reprocess meeting:", apiError.message)
+      alert(`Failed to reprocess meeting: ${apiError.message}`)
+    } finally {
+      setReprocessingMeetingId(null)
     }
   }
 
@@ -350,6 +357,7 @@ export function ContentQueue() {
                   meeting={meeting}
                   onReprocess={handleReprocess}
                   onDelete={handleDelete}
+                  isReprocessing={reprocessingMeetingId === meeting.id}
                 />
               ))}
             </div>

@@ -99,6 +99,8 @@ router.get('/dashboard', requireAuth, async (req, res) => {
         select: {
           id: true,
           readaiId: true,
+          sourceSessionId: true,
+          sessionSequence: true,
           title: true,
           summary: true,
           processedStatus: true,
@@ -144,9 +146,29 @@ router.get('/dashboard', requireAuth, async (req, res) => {
 
     const [pendingCount, scheduledCount, rejectedCount, meetingsCount] = stats;
 
+    // Filter out FAILED meetings if there's a successful reprocessed version (higher session sequence)
+    const filteredMeetings = [];
+    for (const meeting of meetings) {
+      // If meeting is FAILED, check if there's a newer successful session
+      if (meeting.processedStatus === 'FAILED') {
+        const newerSession = await prisma.meeting.findFirst({
+          where: {
+            sourceSessionId: meeting.sourceSessionId || meeting.readaiId,
+            sessionSequence: { gt: meeting.sessionSequence || 1 },
+            processedStatus: { in: ['COMPLETED', 'PROCESSING'] }
+          }
+        });
+        // Skip this FAILED meeting if a newer successful session exists
+        if (newerSession) {
+          continue;
+        }
+      }
+      filteredMeetings.push(meeting);
+    }
+
     res.json({
       posts,
-      meetings,
+      meetings: filteredMeetings,
       stats: {
         totalMeetings: meetingsCount,
         pendingPosts: pendingCount,
@@ -572,6 +594,8 @@ router.get('/meetings', requireAuth, async (req, res) => {
         select: {
           id: true,
           readaiId: true,
+          sourceSessionId: true,
+          sessionSequence: true,
           title: true,
           summary: true,
           processedStatus: true,
@@ -613,6 +637,8 @@ router.get('/meetings', requireAuth, async (req, res) => {
         select: {
           id: true,
           readaiId: true,
+          sourceSessionId: true,
+          sessionSequence: true,
           title: true,
           summary: true,
           processedStatus: true,
@@ -643,7 +669,27 @@ router.get('/meetings', requireAuth, async (req, res) => {
       });
     }
 
-    res.json(meetings);
+    // Filter out FAILED meetings if there's a successful reprocessed version (higher session sequence)
+    const filteredMeetings = [];
+    for (const meeting of meetings) {
+      // If meeting is FAILED, check if there's a newer successful session
+      if (meeting.processedStatus === 'FAILED') {
+        const newerSession = await prisma.meeting.findFirst({
+          where: {
+            sourceSessionId: meeting.sourceSessionId || meeting.readaiId,
+            sessionSequence: { gt: meeting.sessionSequence || 1 },
+            processedStatus: { in: ['COMPLETED', 'PROCESSING'] }
+          }
+        });
+        // Skip this FAILED meeting if a newer successful session exists
+        if (newerSession) {
+          continue;
+        }
+      }
+      filteredMeetings.push(meeting);
+    }
+
+    res.json(filteredMeetings);
   } catch (error) {
     console.error('Meetings fetch error:', error);
     res.status(500).json({ error: 'Failed to get meetings' });
@@ -701,10 +747,10 @@ router.post('/meetings/:meetingId/reprocess', requireAuth, async (req, res) => {
       return res.status(404).json({ error: 'Meeting not found' });
     }
 
-    // Only allow reprocessing of completed meetings
-    if (meeting.processedStatus !== 'COMPLETED') {
-      return res.status(400).json({ 
-        error: 'Only completed meetings can be reprocessed' 
+    // Only allow reprocessing of completed or failed meetings (not pending or processing)
+    if (meeting.processedStatus !== 'COMPLETED' && meeting.processedStatus !== 'FAILED') {
+      return res.status(400).json({
+        error: 'Only completed or failed meetings can be reprocessed. This meeting is currently processing.'
       });
     }
 
