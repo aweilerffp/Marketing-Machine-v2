@@ -227,7 +227,7 @@ Before finalizing each post, verify:
 1. Retrieve brand voice and reference posts
 2. Choose most appropriate story architecture for each hook
 3. Craft posts that feel like {ICP to ICP} advice, not corporate
-4. Prioritize value delivery over word count targets
+4. use real quotes or numbers from the meeting transcript
 5. End with questions that spark genuine {industry}  discussions
 6. Skip hooks that don't naturally connect to {industry}
 

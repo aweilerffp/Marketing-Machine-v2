@@ -709,13 +709,13 @@ Deliver the final LinkedIn post exactly in this format.`;
     const completion = await client.messages.create({
       model: process.env.CLAUDE_MODEL || 'claude-3-5-sonnet-20241022',
       messages: [
-        { 
-          role: 'user', 
-          content: `You are an expert LinkedIn content creator that writes engaging posts for business professionals. Deliver a ready-to-post LinkedIn article followed by an image prompt as described.\n\n${prompt}` 
+        {
+          role: 'user',
+          content: `You are an expert LinkedIn content creator that writes engaging posts for business professionals. Deliver a ready-to-post LinkedIn article followed by an image prompt as described.\n\n${prompt}`
         }
       ],
-      max_tokens: 1500,
-      temperature: parseFloat(process.env.CLAUDE_TEMPERATURE) || 0.7
+      max_tokens: 2500,
+      temperature: parseFloat(process.env.CLAUDE_TEMPERATURE) || 0.8
     });
 
     const response = completion.content[0]?.text || '';
