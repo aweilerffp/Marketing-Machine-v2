@@ -1,0 +1,97 @@
+name: Deploy to Production
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    name: Deploy to Production Server
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Deploy to server via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.PRODUCTION_HOST }}
+          username: ${{ secrets.PRODUCTION_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.SSH_PORT || 22 }}
+          script: |
+            set -e
+
+            echo "🚀 Starting deployment..."
+            cd /root/marketing-machine
+
+            # Create backup before deployment
+            echo "📦 Creating backup..."
+            BACKUP_DIR="/root/marketing-machine-backups/$(date +%Y%m%d_%H%M%S)"
+            mkdir -p "$BACKUP_DIR"
+            cp -r /root/marketing-machine/backend/src "$BACKUP_DIR/" || true
+
+            # Store current commit hash for rollback
+            CURRENT_COMMIT=$(git rev-parse HEAD)
+            echo "$CURRENT_COMMIT" > "$BACKUP_DIR/commit.txt"
+
+            # Pull latest changes
+            echo "📥 Pulling latest code..."
+            git fetch origin
+            git reset --hard origin/main
+
+            # Backend deployment
+            echo "🔧 Installing backend dependencies..."
+            cd /root/marketing-machine/backend
+            npm ci --production
+
+            # Run database migrations
+            echo "🗃️ Running database migrations..."
+            npx prisma migrate deploy
+            npx prisma generate
+
+            # Frontend build
+            echo "🎨 Building frontend..."
+            cd /root/marketing-machine/frontend
+            npm ci
+            VITE_API_URL=https://trymarketingmachine.com npm run build
+
+            # Restart services
+            echo "♻️ Restarting services..."
+            pm2 restart marketing-machine
+
+            # Health check
+            echo "🏥 Running health check..."
+            sleep 5
+            HEALTH_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:3001/api/health || echo "000")
+
+            if [ "$HEALTH_STATUS" != "200" ]; then
+              echo "❌ Health check failed (status: $HEALTH_STATUS)"
+              echo "🔄 Rolling back to $CURRENT_COMMIT..."
+              cd /root/marketing-machine
+              git reset --hard "$CURRENT_COMMIT"
+              pm2 restart marketing-machine
+              exit 1
+            fi
+
+            echo "✅ Deployment successful!"
+            echo "📊 Deployed commit: $(git rev-parse --short HEAD)"
+            echo "⏰ Deployment time: $(date)"
+
+            # Save deployment log
+            mkdir -p /root/deployment-logs
+            cat <<EOF >> /root/deployment-logs/$(date +%Y%m).log
+            [$(date '+%Y-%m-%d %H:%M:%S')] Deployed $(git rev-parse --short HEAD) - Success
+            EOF
+
+      - name: Deployment notification
+        if: always()
+        run: |
+          if [ "${{ job.status }}" == "success" ]; then
+            echo "✅ Deployment completed successfully"
+          else
+            echo "❌ Deployment failed"
+          fi
