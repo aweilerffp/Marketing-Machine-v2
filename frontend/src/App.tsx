@@ -1,6 +1,6 @@
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-query';
-import { ClerkProvider, SignedIn, SignedOut, SignInButton } from '@clerk/clerk-react';
+import { ClerkProvider, SignedIn, SignedOut, SignIn } from '@clerk/clerk-react';
 import { useState } from 'react';
 import ErrorBoundary from './ErrorBoundary';
 import { companyApi } from './services/api';
@@ -36,33 +36,12 @@ function SimpleLandingPage() {
   return (
     <>
       <SignedOut>
-        <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
-          <div className="container mx-auto px-4 py-16">
-            <div className="max-w-4xl mx-auto text-center">
-              <h1 className="text-6xl font-bold text-gray-900 mb-6">
-                Marketing Machine
-              </h1>
-              <p className="text-xl text-gray-600 mb-12">
-                Transform your meeting insights into compelling LinkedIn content with AI-powered brand voice analysis.
-              </p>
-              
-              <div className="bg-white rounded-lg shadow-xl p-8 mb-8">
-                <div className="space-y-6">
-                  <h2 className="text-2xl font-semibold text-gray-900">
-                    Ready to amplify your voice?
-                  </h2>
-                  <p className="text-gray-600">
-                    Sign in to start generating LinkedIn content from your meeting transcripts.
-                  </p>
-                  <SignInButton mode="modal">
-                    <button className="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-8 rounded-lg transition duration-200 transform hover:scale-105">
-                      Get Started
-                    </button>
-                  </SignInButton>
-                </div>
-              </div>
-            </div>
-          </div>
+        <div className="min-h-screen w-full flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100">
+          <SignIn
+            routing="path"
+            path="/"
+            signUpUrl="/sign-up"
+          />
         </div>
       </SignedOut>
 
@@ -81,17 +60,18 @@ function MainDashboard() {
   
   // Get company data to check if onboarding is complete
   // (Always call hooks in the same order - never conditionally)
-  const { data: company, isLoading: companyLoading, refetch: refetchCompany } = useQuery({
+  const { data: company, isLoading: companyLoading, isFetching: companyFetching, isFetched: companyFetched } = useQuery({
     queryKey: ['company'],
     queryFn: companyApi.getCurrent,
-    enabled: !!user
+    enabled: !!user,
+    staleTime: 0 // Always fetch fresh data on mount
   });
-  
+
   // Add debug logging
   console.log('MainDashboard - user:', user);
   console.log('MainDashboard - company:', company);
   console.log('MainDashboard - companyLoading:', companyLoading);
-  
+
   // If user is not loaded yet, show loading
   if (!user) {
     return (
@@ -102,21 +82,9 @@ function MainDashboard() {
     );
   }
 
-
-  // Check for URL parameters
-  const urlParams = new URLSearchParams(window.location.search);
-  const forceOnboarding = urlParams.get('forceOnboarding') === 'true';
-  const skipOnboarding = urlParams.get('skipOnboarding') === 'true';
-  
-  // Check if user has completed onboarding
-  const isOnboarded = skipOnboarding || (!forceOnboarding && company && company.name && company.name !== 'temp' && company.brandVoiceData && (
-    company.brandVoiceData.industry || 
-    company.brandVoiceData.targetAudience || 
-    company.brandVoiceData.websiteContent ||
-    Object.keys(company.brandVoiceData).length > 0
-  ));
-
-  if (companyLoading) {
+  // Wait for company data to be fetched at least once before making onboarding decision
+  // This prevents showing onboarding during the initial load
+  if (!companyFetched && (companyLoading || companyFetching)) {
     return (
       <div className="flex items-center justify-center py-12">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
@@ -124,6 +92,31 @@ function MainDashboard() {
       </div>
     );
   }
+
+
+  // Check for URL parameters
+  const urlParams = new URLSearchParams(window.location.search);
+  const forceOnboarding = urlParams.get('forceOnboarding') === 'true';
+  const skipOnboarding = urlParams.get('skipOnboarding') === 'true';
+
+  // Check if user has completed onboarding
+  const isOnboarded = skipOnboarding || (!forceOnboarding && company && company.name && company.name !== 'temp' && company.brandVoiceData && (
+    company.brandVoiceData.industry ||
+    company.brandVoiceData.targetAudience ||
+    company.brandVoiceData.websiteContent ||
+    Object.keys(company.brandVoiceData).length > 0
+  ));
+
+  console.log('🔍 MainDashboard onboarding check:', {
+    hasCompany: !!company,
+    companyName: company?.name,
+    hasBrandVoiceData: !!company?.brandVoiceData,
+    brandVoiceKeys: company?.brandVoiceData ? Object.keys(company.brandVoiceData).length : 0,
+    isOnboarded,
+    skipOnboarding,
+    forceOnboarding,
+    companyFetched
+  });
 
   if (!isOnboarded) {
     return (

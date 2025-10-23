@@ -297,6 +297,7 @@ router.get('/current', requireAuth, async (req, res) => {
   try {
     const clerkId = getUserId(req);
     console.log(`🔍 Company API /current called with clerkId: ${clerkId}`);
+    console.log(`🔍 Auth user data:`, JSON.stringify(req.auth.user, null, 2));
     
     // In dev mode with mock auth, ensure we have a specific dev user and company
     if (clerkId === 'dev_user_123') {
@@ -389,6 +390,15 @@ router.get('/current', requireAuth, async (req, res) => {
       include: { company: true }
     });
 
+    console.log(`📊 User lookup result:`, {
+      found: !!user,
+      userId: user?.id,
+      email: user?.email,
+      hasCompany: !!user?.company,
+      companyId: user?.company?.id,
+      companyName: user?.company?.name
+    });
+
     // Just-in-time user creation: if user doesn't exist, create them
     if (!user) {
       console.log(`Creating new user for Clerk ID: ${clerkId}`);
@@ -401,6 +411,24 @@ router.get('/current', requireAuth, async (req, res) => {
       });
     }
 
+    // If user.company is null, try direct query
+    if (user && !user.company) {
+      console.log(`⚠️ Prisma relationship failed, trying direct query for userId: ${user.id}`);
+      const directCompany = await prisma.company.findFirst({
+        where: { userId: user.id }
+      });
+      console.log(`📊 Direct query result:`, {
+        found: !!directCompany,
+        companyId: directCompany?.id,
+        companyName: directCompany?.name
+      });
+      if (directCompany) {
+        console.log(`✅ Returning company from direct query: ${directCompany.name}`);
+        return res.json(directCompany);
+      }
+    }
+
+    console.log(`📤 Returning company:`, user?.company ? user.company.name : 'null (onboarding needed)');
     // Return null if no company exists (onboarding needed)
     res.json(user.company || null);
   } catch (error) {
