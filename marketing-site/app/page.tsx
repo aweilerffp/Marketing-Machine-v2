@@ -109,9 +109,9 @@ export default function MarketingMachine() {
         <div className="max-w-7xl mx-auto px-6">
           <div className="text-center mb-20">
             <h2 className="text-4xl md:text-5xl font-bold mb-4 tracking-tight">
-              Create <span className="text-primary">marketing content</span> in 3 steps
+              Create <span className="text-primary">marketing content</span> in 4 steps
             </h2>
-            <p className="text-xl text-muted-foreground">Capture insights, generate content, and post consistently</p>
+            <p className="text-xl text-muted-foreground">Capture insights, generate content, post consistently, and see results</p>
           </div>
 
           {/* Step 1 */}
@@ -193,7 +193,7 @@ export default function MarketingMachine() {
           </div>
 
           {/* Step 3 */}
-          <div>
+          <div className="mb-24">
             <Card className="p-8 md:p-12 shadow-sm border-border bg-card">
               <div className="grid md:grid-cols-2 gap-12 items-center">
                 <div>
@@ -226,6 +226,45 @@ export default function MarketingMachine() {
                     alt="Posts Needing Review interface showing 20 posts waiting for review with search functionality and post preview cards"
                     className="w-full h-auto"
                   />
+                </div>
+              </div>
+            </Card>
+          </div>
+
+          {/* Step 4 */}
+          <div>
+            <Card className="p-8 md:p-12 shadow-sm border-border bg-card">
+              <div className="grid md:grid-cols-2 gap-12 items-center">
+                <div className="order-2 md:order-1 rounded-2xl overflow-hidden border border-border shadow-lg bg-white">
+                  <img
+                    src="/images/results-screenshot.png"
+                    alt="LinkedIn post performance showing real business results with 8,000+ impressions and strong engagement metrics"
+                    className="w-full h-auto"
+                  />
+                </div>
+                <div className="order-1 md:order-2">
+                  <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-primary/10 text-primary text-sm font-semibold mb-4">
+                    STEP 4
+                  </div>
+                  <h3 className="text-3xl md:text-4xl font-bold mb-4 tracking-tight">See Real Business Results</h3>
+                  <p className="text-lg text-muted-foreground mb-8 leading-relaxed">
+                    Track your content performance with real metrics. Watch your LinkedIn presence grow while you focus
+                    on running your business.
+                  </p>
+                  <ul className="space-y-4">
+                    {[
+                      "Track engagement and impressions in real-time",
+                      "Watch your LinkedIn audience grow consistently",
+                      "Generate leads while you focus on your business",
+                    ].map((item, i) => (
+                      <li key={i} className="flex items-start gap-3">
+                        <div className="w-5 h-5 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0 mt-0.5">
+                          <Check className="w-3 h-3 text-primary" />
+                        </div>
+                        <span className="text-foreground">{item}</span>
+                      </li>
+                    ))}
+                  </ul>
                 </div>
               </div>
             </Card>
