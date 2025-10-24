@@ -1,13 +1,14 @@
 module.exports = {
   apps: [{
     name: 'marketing-site',
-    script: 'npm',
-    args: 'start',
+    script: './node_modules/.bin/next',
+    args: 'start -p 3002',
     cwd: '/root/marketing-machine/marketing-site',
     env: {
       NODE_ENV: 'production',
       PORT: 3002
     },
+    exec_mode: 'fork',
     instances: 1,
     autorestart: true,
     watch: false,
@@ -15,6 +16,8 @@ module.exports = {
     error_file: '/root/logs/marketing-site-error.log',
     out_file: '/root/logs/marketing-site-out.log',
     log_file: '/root/logs/marketing-site-combined.log',
-    time: true
+    time: true,
+    kill_timeout: 5000,
+    listen_timeout: 10000
   }]
 };

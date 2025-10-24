@@ -1,8 +1,14 @@
+"use client"
+
+import Link from "next/link"
+import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { ArrowRight, Check, Sparkles, Target, RefreshCw, Palette, Edit3, BarChart3, Clock } from "lucide-react"
 
 export default function MarketingMachine() {
+  const [isLifetime, setIsLifetime] = useState(false)
+
   return (
     <div className="min-h-screen bg-background text-foreground">
       {/* Navigation */}
@@ -39,10 +45,12 @@ export default function MarketingMachine() {
             >
               Pricing
             </a>
-            <Button size="sm" className="rounded-full bg-foreground text-background hover:bg-foreground/90">
-              Get Started
-              <ArrowRight className="w-4 h-4 ml-2" />
-            </Button>
+            <Link href="https://app.trymarketingmachine.com">
+              <Button size="sm" className="rounded-full bg-foreground text-background hover:bg-foreground/90">
+                Get Started
+                <ArrowRight className="w-4 h-4 ml-2" />
+              </Button>
+            </Link>
           </div>
         </div>
       </nav>
@@ -78,13 +86,15 @@ export default function MarketingMachine() {
           </Card>
 
           <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
-            <Button
-              size="lg"
-              className="rounded-full text-base px-8 bg-foreground text-background hover:bg-foreground/90"
-            >
-              Start Creating Content
-              <ArrowRight className="w-5 h-5 ml-2" />
-            </Button>
+            <Link href="https://app.trymarketingmachine.com">
+              <Button
+                size="lg"
+                className="rounded-full text-base px-8 bg-foreground text-background hover:bg-foreground/90"
+              >
+                Start Creating Content
+                <ArrowRight className="w-5 h-5 ml-2" />
+              </Button>
+            </Link>
             <Button size="lg" variant="outline" className="rounded-full text-base px-8 bg-transparent">
               Watch Demo
             </Button>
@@ -324,8 +334,101 @@ export default function MarketingMachine() {
         </div>
       </section>
 
+      {/* Pricing Section */}
+      <section id="pricing" className="bg-secondary/50 py-24 md:py-32">
+        <div className="max-w-7xl mx-auto px-6">
+          <div className="text-center mb-16">
+            <h2 className="text-4xl md:text-5xl font-bold mb-4 tracking-tight">
+              Simple, <span className="text-primary">transparent</span> pricing
+            </h2>
+            <p className="text-xl text-muted-foreground">Choose the plan that works best for you</p>
+          </div>
+
+          {/* Toggle Switch */}
+          <div className="flex items-center justify-center gap-4 mb-12">
+            <span className={`text-lg font-medium transition-colors ${!isLifetime ? "text-foreground" : "text-muted-foreground"}`}>
+              Monthly
+            </span>
+            <button
+              onClick={() => setIsLifetime(!isLifetime)}
+              className="relative w-16 h-8 rounded-full bg-secondary border-2 border-border transition-colors hover:border-primary/50 focus:outline-none focus:ring-2 focus:ring-primary/20"
+              aria-label="Toggle between monthly and lifetime pricing"
+            >
+              <div
+                className={`absolute top-0.5 left-0.5 w-6 h-6 rounded-full bg-primary transition-transform duration-200 ease-in-out ${
+                  isLifetime ? "translate-x-8" : "translate-x-0"
+                }`}
+              />
+            </button>
+            <span className={`text-lg font-medium transition-colors ${isLifetime ? "text-foreground" : "text-muted-foreground"}`}>
+              Lifetime
+              <span className="ml-2 inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-primary/10 text-primary">
+                Best deal
+              </span>
+            </span>
+          </div>
+
+          {/* Pricing Card */}
+          <div className="max-w-lg mx-auto">
+            <Card className="p-10 md:p-12 shadow-lg border-2 border-primary/20 bg-card hover:border-primary/40 transition-colors">
+              <div className="text-center mb-8">
+                <div className="mb-6">
+                  <div className="flex items-baseline justify-center gap-2">
+                    <span className="text-5xl md:text-6xl font-bold tracking-tight">
+                      {isLifetime ? "$999" : "$99"}
+                    </span>
+                    {!isLifetime && <span className="text-2xl text-muted-foreground">/month</span>}
+                  </div>
+                  {isLifetime && (
+                    <p className="text-lg text-muted-foreground mt-2">One-time payment</p>
+                  )}
+                </div>
+                <p className="text-lg text-muted-foreground">
+                  {isLifetime
+                    ? "Pay once, use forever. No recurring charges."
+                    : "Perfect for growing teams and consistent content creators."}
+                </p>
+              </div>
+
+              <div className="space-y-4 mb-8">
+                {[
+                  "Unlimited meetings & content generation",
+                  "Auto-sync with Read.ai",
+                  "AI-powered brand voice analysis",
+                  "Custom image generation",
+                  "LinkedIn auto-posting",
+                  "Real-time pipeline monitoring",
+                  "Priority support",
+                ].map((feature, i) => (
+                  <div key={i} className="flex items-start gap-3">
+                    <div className="w-5 h-5 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0 mt-0.5">
+                      <Check className="w-3 h-3 text-primary" />
+                    </div>
+                    <span className="text-foreground">{feature}</span>
+                  </div>
+                ))}
+              </div>
+
+              <Link href="https://app.trymarketingmachine.com" className="block">
+                <Button
+                  size="lg"
+                  className="w-full rounded-full text-base bg-foreground text-background hover:bg-foreground/90"
+                >
+                  Start 14-day free trial
+                  <ArrowRight className="w-5 h-5 ml-2" />
+                </Button>
+              </Link>
+
+              <p className="text-sm text-muted-foreground text-center mt-4">
+                No credit card required • Cancel anytime
+              </p>
+            </Card>
+          </div>
+        </div>
+      </section>
+
       {/* Social Proof */}
-      <section className="bg-secondary/50 py-24 md:py-32">
+      <section className="py-24 md:py-32">
         <div className="max-w-4xl mx-auto px-6">
           <div className="text-center mb-16">
             <h2 className="text-3xl md:text-4xl font-bold mb-4 tracking-tight">
@@ -377,13 +480,15 @@ export default function MarketingMachine() {
             meeting.
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center items-center mb-6">
-            <Button
-              size="lg"
-              className="rounded-full text-base px-10 bg-foreground text-background hover:bg-foreground/90"
-            >
-              Get Started Free
-              <ArrowRight className="w-5 h-5 ml-2" />
-            </Button>
+            <Link href="https://app.trymarketingmachine.com">
+              <Button
+                size="lg"
+                className="rounded-full text-base px-10 bg-foreground text-background hover:bg-foreground/90"
+              >
+                Get Started Free
+                <ArrowRight className="w-5 h-5 ml-2" />
+              </Button>
+            </Link>
           </div>
           <p className="text-sm text-muted-foreground">No credit card required • 14-day free trial</p>
         </div>

@@ -6,8 +6,11 @@ const _geist = Geist({ subsets: ["latin"] });
 const _geistMono = Geist_Mono({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: 'Marketing Machine - Turn Meetings into LinkedIn Content',
+  title: 'Marketing Machine',
   description: 'Automatically transform your meeting insights into engaging LinkedIn posts. Built for busy founders and small teams.',
+  icons: {
+    icon: '/favicon.jpg',
+  },
 }
 
 export default function RootLayout({
