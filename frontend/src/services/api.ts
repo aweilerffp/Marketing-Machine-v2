@@ -414,10 +414,53 @@ export const companyApi = {
   }
 };
 
+export interface ConsentData {
+  aiProcessingConsent: boolean;
+  aiConsentGrantedAt?: string;
+  consentVersion?: string;
+}
+
 export const authApi = {
   // Health check
   healthCheck: async (): Promise<{ status: string; timestamp: string }> => {
     const response = await api.get('/health');
+    return response.data;
+  },
+
+  // Get current consent status
+  getConsent: async (): Promise<ConsentData | null> => {
+    try {
+      const response = await api.get('/api/auth/consent');
+      return response.data;
+    } catch (error: any) {
+      if (error.response?.status === 404) {
+        return null;
+      }
+      throw error;
+    }
+  },
+
+  // Update consent
+  updateConsent: async (consentData: { aiProcessingConsent: boolean }): Promise<ConsentData> => {
+    const response = await api.post('/api/auth/consent', consentData);
+    return response.data;
+  },
+
+  // Request account deletion
+  requestAccountDeletion: async (): Promise<{
+    message: string;
+    scheduledFor: string;
+    deletionRequestId: string;
+  }> => {
+    const response = await api.post('/api/auth/delete-account');
+    return response.data;
+  },
+
+  // Cancel account deletion
+  cancelAccountDeletion: async (): Promise<{
+    message: string;
+  }> => {
+    const response = await api.delete('/api/auth/delete-account');
     return response.data;
   }
 };

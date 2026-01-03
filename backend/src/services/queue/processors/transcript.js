@@ -31,19 +31,21 @@ const updateProcessingStep = async (meetingId, step) => {
 };
 
 export const processTranscript = async (job) => {
-  const { 
-    sessionId, 
-    title, 
-    summary, 
-    transcript, 
+  const {
+    sessionId,
+    title,
+    summary,
+    transcript,
     actionItems,
     owner,
     participants,
     sourceSessionId,
     sessionSequence = 1,
-    // NEW: Token-validated company data from webhook
+    // Company data from webhook (Zoom or legacy Read.ai)
     companyId,
-    companyName
+    companyName,
+    // Source type: 'ZOOM' or 'READAI'
+    sourceType = 'ZOOM'
   } = job.data;
 
   try {
@@ -106,7 +108,7 @@ export const processTranscript = async (job) => {
     // Step 2: Store or update meeting record with PROCESSING status
     const meeting = await prisma.meeting.upsert({
       where: {
-        readaiId: sessionId
+        sourceId: sessionId
       },
       update: {
         companyId: company?.id || null,
@@ -117,10 +119,12 @@ export const processTranscript = async (job) => {
         processedStatus: 'PROCESSING',
         processedAt: new Date(),
         sourceSessionId: sourceSessionId || sessionId,
-        sessionSequence
+        sessionSequence,
+        sourceType
       },
       create: {
-        readaiId: sessionId,
+        sourceId: sessionId,
+        sourceType,
         companyId: company?.id || null,
         title: title || 'Untitled Meeting',
         transcript,

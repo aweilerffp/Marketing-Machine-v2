@@ -1,9 +1,14 @@
 import express from 'express';
-import readaiRouter from './readai.js';
+import zoomRouter from './zoom.js';
+// Legacy Read.ai router - kept for backward compatibility during migration
+// import readaiRouter from './readai.js';
 
 const router = express.Router();
 
-// Mount the readai router directly - it will handle both legacy and token-based routes
-router.use('/readai', readaiRouter);
+// Zoom webhook endpoint
+router.use('/zoom', zoomRouter);
+
+// Legacy Read.ai routes - disabled (clean break migration)
+// router.use('/readai', readaiRouter);
 
 export default router;

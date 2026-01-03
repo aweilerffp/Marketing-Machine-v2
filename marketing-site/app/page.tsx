@@ -78,7 +78,7 @@ export default function MarketingMachine() {
             <p className="text-sm text-muted-foreground mb-6 font-medium">Auto-sync your meeting insights from:</p>
             <div className="flex justify-center gap-6 items-center flex-wrap">
               <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center border-2 border-primary/20">
-                <span className="text-xs font-bold text-primary">Read.ai</span>
+                <span className="text-xs font-bold text-primary">Zoom</span>
               </div>
               <div className="text-muted-foreground">•</div>
               <div className="text-sm text-muted-foreground">+ more soon</div>
@@ -124,12 +124,12 @@ export default function MarketingMachine() {
                   </div>
                   <h3 className="text-3xl md:text-4xl font-bold mb-4 tracking-tight">Capture Your Meetings</h3>
                   <p className="text-lg text-muted-foreground mb-8 leading-relaxed">
-                    Connect Read.ai and we automatically receive your meeting transcripts. Every customer conversation
+                    Connect Zoom and we automatically receive your meeting transcripts. Every customer conversation
                     becomes a potential marketing opportunity.
                   </p>
                   <ul className="space-y-4">
                     {[
-                      "Automatic transcript capture from Read.ai",
+                      "Automatic transcript capture from Zoom cloud recordings",
                       "Extract key insights and customer pain points",
                       "No manual note-taking required",
                     ].map((item, i) => (
@@ -432,7 +432,7 @@ export default function MarketingMachine() {
               <div className="space-y-4 mb-8">
                 {[
                   "Unlimited meetings & content generation",
-                  "Auto-sync with Read.ai",
+                  "Auto-sync with Zoom",
                   "AI-powered brand voice analysis",
                   "Custom image generation",
                   "LinkedIn auto-posting",
@@ -515,7 +515,7 @@ export default function MarketingMachine() {
             Start turning meetings into <span className="text-primary">marketing</span>
           </h2>
           <p className="text-xl text-muted-foreground mb-12 max-w-2xl mx-auto leading-relaxed">
-            Connect Read.ai, complete a 10-minute onboarding, and start generating LinkedIn content from your next
+            Connect Zoom, complete a 10-minute onboarding, and start generating LinkedIn content from your next
             meeting.
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center items-center mb-6">
@@ -543,8 +543,8 @@ export default function MarketingMachine() {
           <div className="space-y-4">
             {[
               {
-                q: "How does the Read.ai integration work?",
-                a: "After connecting your Read.ai account during onboarding, we automatically receive transcripts from your meetings via webhook. You don't need to manually upload anything—it all happens in the background.",
+                q: "How does the Zoom integration work?",
+                a: "After connecting your Zoom account during onboarding, we automatically receive transcripts from your cloud recordings. You don't need to manually upload anything—transcripts are processed within 1-2 hours after your meeting ends.",
               },
               {
                 q: "How do you maintain my brand voice?",
@@ -640,17 +640,17 @@ export default function MarketingMachine() {
               <h4 className="font-semibold mb-4">Legal</h4>
               <ul className="space-y-3 text-sm">
                 <li>
-                  <a href="#" className="text-muted-foreground hover:text-foreground transition-colors">
+                  <a href="/privacy" className="text-muted-foreground hover:text-foreground transition-colors">
                     Privacy
                   </a>
                 </li>
                 <li>
-                  <a href="#" className="text-muted-foreground hover:text-foreground transition-colors">
+                  <a href="/terms" className="text-muted-foreground hover:text-foreground transition-colors">
                     Terms
                   </a>
                 </li>
                 <li>
-                  <a href="#" className="text-muted-foreground hover:text-foreground transition-colors">
+                  <a href="/privacy#data-security" className="text-muted-foreground hover:text-foreground transition-colors">
                     Security
                   </a>
                 </li>

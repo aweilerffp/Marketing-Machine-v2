@@ -14,8 +14,45 @@ model User {
   company             Company?
   linkedinToken       String?             // Deprecated - use PlatformConnection
   platformConnections PlatformConnection[]
+  consent             UserConsent?
+  deletionRequests    DeletionRequest[]
   createdAt           DateTime            @default(now())
   updatedAt           DateTime            @updatedAt
+}
+
+model UserConsent {
+  id                  String    @id @default(cuid())
+  userId              String    @unique
+  user                User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  aiProcessingConsent Boolean   @default(false)
+  aiConsentGrantedAt  DateTime?
+  consentVersion      String    @default("1.0")
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+}
+
+model DeletionRequest {
+  id               String          @id @default(cuid())
+  userId           String
+  user             User            @relation(fields: [userId], references: [id])
+  zoomUserId       String?
+  status           DeletionStatus  @default(PENDING)
+  scheduledFor     DateTime
+  completedAt      DateTime?
+  zoomComplianceId String?
+  auditLog         Json?
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+
+  @@index([status, scheduledFor])
+  @@index([zoomUserId])
+}
+
+enum DeletionStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
 }
 
 model Company {
@@ -27,9 +64,7 @@ model Company {
   contentPillars         String   // JSON string for SQLite compatibility
   postingSchedule        Json     // Default posting times
   supportedPlatforms     String   @default("[]") // JSON array of platform types
-  platformConfigurations Json? // Platform-specific settings
-  webhookToken           String?  @unique // Secret token for Read.ai webhook authentication
-  webhookActive          Boolean  @default(true) // Allow enabling/disabling webhook processing
+  platformConfigurations Json?    // Platform-specific settings
   customLinkedInPrompt   String?  // AI-generated custom prompt for LinkedIn post generation
   customHookPrompt       String?  // AI-generated custom prompt for hook generation
   customImagePrompt      String?  // AI-generated custom prompt for image generation
@@ -43,7 +78,8 @@ model Meeting {
   id              String         @id @default(cuid())
   companyId       String?
   company         Company?       @relation(fields: [companyId], references: [id])
-  readaiId        String         @unique
+  sourceId        String         @unique  // Zoom meeting UUID or other source ID (renamed from readaiId)
+  sourceType      MeetingSource  @default(ZOOM)
   sourceSessionId String
   sessionSequence Int            @default(1)
   title           String?
@@ -63,6 +99,11 @@ model Meeting {
   @@index([companyId, processedStatus])
   @@index([sourceSessionId])
   @@unique([sourceSessionId, sessionSequence])
+}
+
+enum MeetingSource {
+  ZOOM
+  READAI  // Legacy, for backward compatibility during migration
 }
 
 model ContentHook {

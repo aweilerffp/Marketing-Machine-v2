@@ -1,10 +1,14 @@
 import { SignedIn, SignedOut } from '@clerk/clerk-react';
 import { useNavigate } from 'react-router-dom';
 import { useState } from 'react';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import Navbar from '../components/layout/Navbar';
 import { useUpsertCompany } from '../hooks/useCompany';
 import URLInputStep from '../components/onboarding/URLInputStep';
 import AIFieldPreview from '../components/onboarding/AIFieldPreview';
+import { ZoomConnection } from '../components/ZoomConnection';
+import { authApi } from '../services/api';
+import { Shield, CheckCircle, ExternalLink } from 'lucide-react';
 
 interface BrandVoiceData {
   tone: string;
@@ -22,7 +26,8 @@ interface BrandVoiceData {
 
 export default function Onboarding() {
   const navigate = useNavigate();
-  const [step, setStep] = useState(0); // Now starts at 0 for URL input
+  const queryClient = useQueryClient();
+  const [step, setStep] = useState(0); // Now starts at 0 for AI consent
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [analysisData, setAnalysisData] = useState<any>(null); // Store AI analysis results
@@ -32,8 +37,18 @@ export default function Onboarding() {
     generatingPosts: false,
     generatingImages: false
   });
+  const [consentChecked, setConsentChecked] = useState(false);
+  const [zoomConnected, setZoomConnected] = useState(false);
 
   const upsertCompanyMutation = useUpsertCompany();
+
+  // Mutation to save AI consent
+  const saveConsentMutation = useMutation({
+    mutationFn: authApi.updateConsent,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['consent'] });
+    }
+  });
 
   const [formData, setFormData] = useState({
     companyName: '',
@@ -58,27 +73,40 @@ export default function Onboarding() {
   });
 
   // Form validation
+  // Step mapping (with new consent and zoom steps):
+  // 0: AI Consent (must consent to proceed)
+  // 1: URL Input
+  // 2: Company Info
+  // 3: Content Pillars
+  // 4: Brand Voice
+  // 5: Brand Assets
+  // 6: Content Examples
+  // 7: Publishing Schedule
+  // 8: Connect Zoom (optional)
   const validateStep = (currentStep: number) => {
     const newErrors: Record<string, string> = {};
-    
+
     switch (currentStep) {
-      case 1:
+      case 0:
+        if (!consentChecked) newErrors.consent = 'You must consent to AI processing to continue';
+        break;
+      case 2:
         if (!formData.companyName.trim()) newErrors.companyName = 'Company name is required';
         if (!formData.industry.trim()) newErrors.industry = 'Industry is required';
         if (!formData.targetAudience.trim()) newErrors.targetAudience = 'Target audience is required';
         break;
-      case 2:
+      case 3:
         if (formData.contentPillars.length < 2) newErrors.contentPillars = 'At least 2 content pillars are required';
         break;
-      case 3:
+      case 4:
         if (!formData.brandVoice.tone.trim()) newErrors.tone = 'Brand tone is required';
         if (formData.brandVoice.personality.length === 0) newErrors.personality = 'At least one personality trait is required';
         break;
-      case 5:
+      case 6:
         if (!formData.brandVoice.websiteContent.trim()) newErrors.websiteContent = 'Website content is required for brand analysis';
         break;
     }
-    
+
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
@@ -108,19 +136,35 @@ export default function Onboarding() {
       }
     });
 
-    // Move to step 1 (review)
-    setStep(1);
+    // Move to step 2 (company info review)
+    setStep(2);
   };
 
   // Handle skip analysis
   const handleSkipAnalysis = () => {
     setAnalysisData(null);
-    setStep(1); // Skip to manual entry
+    setStep(2); // Skip to manual entry
+  };
+
+  // Handle consent agreement
+  const handleConsentAgree = async () => {
+    if (!consentChecked) {
+      setErrors({ consent: 'You must check the consent box to continue' });
+      return;
+    }
+
+    try {
+      await saveConsentMutation.mutateAsync({ aiProcessingConsent: true });
+      setStep(1); // Move to URL input
+    } catch (error) {
+      console.error('Failed to save consent:', error);
+      setErrors({ consent: 'Failed to save consent. Please try again.' });
+    }
   };
 
   const handleNext = () => {
     if (validateStep(step)) {
-      if (step < 6) {
+      if (step < 8) {
         setStep(step + 1);
       } else {
         handleSubmit();
@@ -230,6 +274,90 @@ export default function Onboarding() {
   const renderStep = () => {
     switch (step) {
       case 0:
+        // AI Consent Step
+        return (
+          <div className="space-y-6">
+            <div className="text-center">
+              <div className="inline-flex items-center justify-center w-16 h-16 bg-blue-100 rounded-full mb-4">
+                <Shield className="w-8 h-8 text-blue-600" />
+              </div>
+              <h2 className="text-2xl font-bold text-gray-900 mb-2">AI Processing Consent</h2>
+              <p className="text-gray-600">Before we begin, we need your consent to process your data</p>
+            </div>
+
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-6 space-y-4">
+              <h3 className="font-semibold text-blue-900">How Marketing Machine Works</h3>
+              <ul className="space-y-3 text-sm text-blue-800">
+                <li className="flex items-start gap-2">
+                  <CheckCircle className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
+                  <span>Your Zoom meeting transcripts are automatically collected after each recording</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <CheckCircle className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
+                  <span>AI (Claude by Anthropic) analyzes transcripts to generate marketing content</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <CheckCircle className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
+                  <span>Content is generated based on your brand voice and content pillars</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <CheckCircle className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
+                  <span>You review and approve all content before it's published</span>
+                </li>
+              </ul>
+            </div>
+
+            <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+              <label className="flex items-start gap-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={consentChecked}
+                  onChange={(e) => {
+                    setConsentChecked(e.target.checked);
+                    if (e.target.checked) setErrors({});
+                  }}
+                  className="mt-1 w-5 h-5 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                />
+                <span className="text-sm text-gray-700">
+                  I consent to Marketing Machine processing my Zoom meeting transcripts using AI
+                  to generate marketing content. I understand I can revoke this consent at any time
+                  from the Settings page.
+                </span>
+              </label>
+              {errors.consent && (
+                <p className="text-red-600 text-sm mt-2">{errors.consent}</p>
+              )}
+            </div>
+
+            <div className="flex items-center justify-between text-sm text-gray-500">
+              <a
+                href="/privacy"
+                target="_blank"
+                className="text-blue-600 hover:text-blue-700 flex items-center gap-1"
+              >
+                Privacy Policy <ExternalLink className="w-3 h-3" />
+              </a>
+              <a
+                href="/terms"
+                target="_blank"
+                className="text-blue-600 hover:text-blue-700 flex items-center gap-1"
+              >
+                Terms of Service <ExternalLink className="w-3 h-3" />
+              </a>
+            </div>
+
+            <button
+              onClick={handleConsentAgree}
+              disabled={!consentChecked || saveConsentMutation.isPending}
+              className="w-full bg-blue-600 text-white px-6 py-3 rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {saveConsentMutation.isPending ? 'Saving...' : 'I Agree - Continue'}
+            </button>
+          </div>
+        );
+
+      case 1:
+        // URL Input Step
         return (
           <URLInputStep
             onAnalysisComplete={handleAnalysisComplete}
@@ -237,7 +365,7 @@ export default function Onboarding() {
           />
         );
 
-      case 1:
+      case 2:
         return (
           <div className="space-y-6">
             {/* Warning banner for low confidence */}
@@ -367,14 +495,15 @@ export default function Onboarding() {
             </div>
           </div>
         );
-        
-      case 2:
+
+      case 3:
+        // Content Pillars
         return (
           <div className="space-y-6">
             {analysisData && analysisData.contentPillars?.length > 0 && (
               <div className="bg-blue-50 border border-blue-200 rounded-md p-4">
                 <p className="text-sm text-blue-800">
-                  ✨ We suggested these content pillars based on your website. Remove any you don't want and add your own!
+                  We suggested these content pillars based on your website. Remove any you don't want and add your own!
                 </p>
               </div>
             )}
@@ -469,8 +598,9 @@ export default function Onboarding() {
             </div>
           </div>
         );
-        
-      case 3:
+
+      case 4:
+        // Brand Voice & Tone
         return (
           <div className="space-y-6">
             <div>
@@ -552,8 +682,9 @@ export default function Onboarding() {
             </div>
           </div>
         );
-        
-      case 4:
+
+      case 5:
+        // Brand Assets & Keywords
         return (
           <div className="space-y-6">
             <div>
@@ -648,7 +779,8 @@ export default function Onboarding() {
           </div>
         );
 
-      case 5:
+      case 6:
+        // Content Examples
         return (
           <div className="space-y-6">
             <div>
@@ -760,14 +892,15 @@ export default function Onboarding() {
           </div>
         );
 
-      case 6:
+      case 7:
+        // Publishing Schedule
         return (
           <div className="space-y-6">
             <div>
               <h2 className="text-2xl font-bold text-gray-900 mb-2">Publishing Schedule</h2>
               <p className="text-gray-600">When should we post your approved content?</p>
             </div>
-            
+
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -785,7 +918,7 @@ export default function Onboarding() {
                   <option value="UTC">UTC</option>
                 </select>
               </div>
-              
+
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   Default Posting Times
@@ -795,18 +928,18 @@ export default function Onboarding() {
                   <input
                     type="time"
                     value={formData.postingTimes[0]}
-                    onChange={(e) => setFormData({ 
-                      ...formData, 
-                      postingTimes: [e.target.value, formData.postingTimes[1]] 
+                    onChange={(e) => setFormData({
+                      ...formData,
+                      postingTimes: [e.target.value, formData.postingTimes[1]]
                     })}
                     className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                   <input
                     type="time"
                     value={formData.postingTimes[1]}
-                    onChange={(e) => setFormData({ 
-                      ...formData, 
-                      postingTimes: [formData.postingTimes[0], e.target.value] 
+                    onChange={(e) => setFormData({
+                      ...formData,
+                      postingTimes: [formData.postingTimes[0], e.target.value]
                     })}
                     className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
@@ -821,7 +954,62 @@ export default function Onboarding() {
             </div>
           </div>
         );
-        
+
+      case 8:
+        // Connect Zoom
+        return (
+          <div className="space-y-6">
+            <div>
+              <h2 className="text-2xl font-bold text-gray-900 mb-2">Connect Zoom</h2>
+              <p className="text-gray-600">
+                Connect your Zoom account to automatically receive meeting transcripts.
+                You can also do this later from Settings.
+              </p>
+            </div>
+
+            <ZoomConnection
+              showSkip={true}
+              onSkip={handleSubmit}
+              onConnected={() => setZoomConnected(true)}
+            />
+
+            {zoomConnected && (
+              <div className="pt-4">
+                <button
+                  onClick={handleSubmit}
+                  disabled={isSubmitting}
+                  className="w-full bg-blue-600 text-white px-6 py-3 rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {isSubmitting ? (
+                    <div className="space-y-1.5">
+                      <div className="flex items-center justify-center text-sm font-medium">
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                        Setting up...
+                      </div>
+                      <div className="space-y-0.5 text-xs text-blue-100">
+                        <div className="flex items-center justify-center">
+                          {setupSteps.savingProfile ? '✓' : '○'} Saving your profile
+                        </div>
+                        <div className="flex items-center justify-center">
+                          {setupSteps.generatingHooks ? '✓' : '○'} Writing marketing hooks
+                        </div>
+                        <div className="flex items-center justify-center">
+                          {setupSteps.generatingPosts ? '✓' : '○'} Creating post templates
+                        </div>
+                        <div className="flex items-center justify-center">
+                          {setupSteps.generatingImages ? '✓' : '○'} Generating image styles
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    'Complete Setup'
+                  )}
+                </button>
+              </div>
+            )}
+          </div>
+        );
+
       default:
         return null;
     }
@@ -839,28 +1027,30 @@ export default function Onboarding() {
           
           <main className="max-w-2xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
             <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-8">
-              {/* Progress Bar - Only show if past step 0 */}
+              {/* Progress Bar - Only show if past consent step (step 0) */}
               {step > 0 && (
                 <div className="mb-8">
                   <div className="flex items-center justify-between text-sm text-gray-600 mb-2">
-                    <span>Step {step} of 6</span>
-                    <span>{Math.round((step / 6) * 100)}% Complete</span>
+                    <span>Step {step} of 8</span>
+                    <span>{Math.round((step / 8) * 100)}% Complete</span>
                   </div>
                   <div className="w-full bg-gray-200 rounded-full h-2">
                     <div
                       className="bg-blue-600 h-2 rounded-full transition-all duration-300"
-                      style={{ width: `${(step / 6) * 100}%` }}
+                      style={{ width: `${(step / 8) * 100}%` }}
                     ></div>
                   </div>
 
                   {/* Step indicators */}
                   <div className="flex justify-between mt-4 text-xs">
-                    <span className={step >= 1 ? 'text-blue-600 font-medium' : 'text-gray-400'}>Company</span>
-                    <span className={step >= 2 ? 'text-blue-600 font-medium' : 'text-gray-400'}>Pillars</span>
-                    <span className={step >= 3 ? 'text-blue-600 font-medium' : 'text-gray-400'}>Voice</span>
-                    <span className={step >= 4 ? 'text-blue-600 font-medium' : 'text-gray-400'}>Assets</span>
-                    <span className={step >= 5 ? 'text-blue-600 font-medium' : 'text-gray-400'}>Examples</span>
-                    <span className={step >= 6 ? 'text-blue-600 font-medium' : 'text-gray-400'}>Schedule</span>
+                    <span className={step >= 1 ? 'text-blue-600 font-medium' : 'text-gray-400'}>Website</span>
+                    <span className={step >= 2 ? 'text-blue-600 font-medium' : 'text-gray-400'}>Company</span>
+                    <span className={step >= 3 ? 'text-blue-600 font-medium' : 'text-gray-400'}>Pillars</span>
+                    <span className={step >= 4 ? 'text-blue-600 font-medium' : 'text-gray-400'}>Voice</span>
+                    <span className={step >= 5 ? 'text-blue-600 font-medium' : 'text-gray-400'}>Assets</span>
+                    <span className={step >= 6 ? 'text-blue-600 font-medium' : 'text-gray-400'}>Examples</span>
+                    <span className={step >= 7 ? 'text-blue-600 font-medium' : 'text-gray-400'}>Schedule</span>
+                    <span className={step >= 8 ? 'text-blue-600 font-medium' : 'text-gray-400'}>Zoom</span>
                   </div>
                 </div>
               )}
@@ -868,14 +1058,14 @@ export default function Onboarding() {
               {/* Step Content */}
               {renderStep()}
 
-              {/* Navigation Buttons - Only show for steps 1-6 */}
-              {step > 0 && (
+              {/* Navigation Buttons - Show for steps 2-7 (not consent, URL, or Zoom steps) */}
+              {step >= 2 && step <= 7 && (
                 <div className="flex justify-between pt-8">
                   <button
                     onClick={handleBack}
-                    disabled={step === 1}
+                    disabled={step === 2}
                     className={`px-4 py-2 rounded-md ${
-                      step === 1
+                      step === 2
                         ? 'text-gray-400 cursor-not-allowed'
                         : 'text-gray-700 hover:text-gray-900'
                     }`}
@@ -910,7 +1100,7 @@ export default function Onboarding() {
                         </div>
                       </div>
                     ) : (
-                      step === 6 ? 'Complete Setup' : 'Next'
+                      'Next'
                     )}
                   </button>
                 </div>

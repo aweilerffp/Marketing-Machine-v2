@@ -12,6 +12,8 @@ import { Navigation } from './components/Navigation';
 import { CompanySettings } from './components/CompanySettings';
 import Dashboard from './pages/Dashboard';
 import LinkedInCallback from './pages/LinkedInCallback';
+import ZoomCallback from './pages/ZoomCallback';
+import Settings from './pages/Settings';
 import StatusPage from './pages/StatusPage';
 
 // Create a client with optimized settings for real-time data
@@ -27,8 +29,10 @@ const queryClient = new QueryClient({
 });
 
 const publishableKey = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
+const isDevelopment = import.meta.env.DEV;
 
-if (!publishableKey) {
+// In development, allow running without Clerk for testing
+if (!publishableKey && !isDevelopment) {
   throw new Error("Missing Publishable Key")
 }
 
@@ -153,16 +157,43 @@ function MainDashboard() {
   );
 }
 
-function App() {
+// Development mode component without Clerk
+function DevModeApp() {
   return (
     <ErrorBoundary>
-      <ClerkProvider publishableKey={publishableKey}>
+      <QueryClientProvider client={queryClient}>
+        <AuthProvider>
+          <Router>
+            <Routes>
+              <Route path="/" element={<MainDashboard />} />
+              <Route path="/settings" element={<Settings />} />
+              <Route path="/auth/linkedin/callback" element={<LinkedInCallback />} />
+              <Route path="/auth/zoom/callback" element={<ZoomCallback />} />
+            </Routes>
+          </Router>
+        </AuthProvider>
+      </QueryClientProvider>
+    </ErrorBoundary>
+  );
+}
+
+function App() {
+  // In development without Clerk key, use dev mode
+  if (isDevelopment && !publishableKey) {
+    return <DevModeApp />;
+  }
+
+  return (
+    <ErrorBoundary>
+      <ClerkProvider publishableKey={publishableKey!}>
         <QueryClientProvider client={queryClient}>
           <AuthProvider>
             <Router>
               <Routes>
                 <Route path="/" element={<SimpleLandingPage />} />
+                <Route path="/settings" element={<Settings />} />
                 <Route path="/auth/linkedin/callback" element={<LinkedInCallback />} />
+                <Route path="/auth/zoom/callback" element={<ZoomCallback />} />
               </Routes>
             </Router>
           </AuthProvider>
