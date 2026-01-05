@@ -9,6 +9,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { SchedulingSettings } from './SchedulingSettings';
 import { WebhookIntegrations } from './WebhookIntegrations';
 import { LinkedInConnection } from './LinkedInConnection';
+import { ZoomConnection } from './ZoomConnection';
 
 interface CompanySettingsProps {
   onBack?: () => void;
@@ -756,8 +757,9 @@ export const CompanySettings: React.FC<CompanySettingsProps> = ({ onBack }) => {
         </TabsContent>
 
         <TabsContent value="integrations" className="space-y-6">
-          <WebhookIntegrations />
+          <ZoomConnection />
           <LinkedInConnection />
+          <WebhookIntegrations />
         </TabsContent>
 
         {/* Advanced Tab - Hidden Prompt Settings */}

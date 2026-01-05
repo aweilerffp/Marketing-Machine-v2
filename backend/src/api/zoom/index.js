@@ -19,8 +19,7 @@ router.get('/auth', requireAuth, (req, res) => {
 
   // Zoom OAuth scopes for cloud recording access and user profile
   const scopes = [
-    'cloud_recording:read:list_recording_files',
-    'user:read:list_recordings',
+    'cloud_recording:read:list_user_recordings',
     'user:read:user'
   ];
   const scope = encodeURIComponent(scopes.join(' '));
@@ -182,6 +181,81 @@ router.get('/profile', requireAuth, async (req, res) => {
     }
 
     res.status(500).json({ error: 'Failed to get Zoom profile' });
+  }
+});
+
+// Get recent cloud recordings
+router.get('/recordings', requireAuth, async (req, res) => {
+  try {
+    const clerkId = getUserId(req);
+
+    const user = await prisma.user.findUnique({
+      where: { clerkId },
+      select: { id: true }
+    });
+
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    // Get Zoom connection with access token
+    const connection = await getZoomConnection(user.id);
+    if (!connection) {
+      return res.status(401).json({ error: 'Zoom not connected', code: 'NOT_CONNECTED' });
+    }
+
+    // Calculate date range (last 30 days)
+    const toDate = new Date().toISOString().split('T')[0];
+    const fromDate = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+
+    // Call Zoom API to list recordings
+    const recordingsResponse = await axios.get('https://api.zoom.us/v2/users/me/recordings', {
+      params: {
+        from: fromDate,
+        to: toDate,
+        page_size: 30
+      },
+      headers: {
+        'Authorization': `Bearer ${connection.accessToken}`
+      }
+    });
+
+    const meetings = recordingsResponse.data.meetings || [];
+
+    // Format response with key info
+    const recordings = meetings.map(meeting => ({
+      id: meeting.id,
+      uuid: meeting.uuid,
+      topic: meeting.topic,
+      startTime: meeting.start_time,
+      duration: meeting.duration,
+      totalSize: meeting.total_size,
+      recordingCount: meeting.recording_count,
+      hasTranscript: meeting.recording_files?.some(f => f.file_type === 'TRANSCRIPT') || false,
+      recordingFiles: meeting.recording_files?.map(f => ({
+        id: f.id,
+        type: f.file_type,
+        fileExtension: f.file_extension,
+        status: f.status,
+        downloadUrl: f.download_url
+      })) || []
+    }));
+
+    res.json({
+      totalRecords: recordingsResponse.data.total_records,
+      from: fromDate,
+      to: toDate,
+      recordings
+    });
+
+  } catch (error) {
+    console.error('Zoom recordings error:', error.response?.data || error);
+
+    if (error.response?.status === 401) {
+      return res.status(401).json({ error: 'Zoom token expired', code: 'TOKEN_EXPIRED' });
+    }
+
+    res.status(500).json({ error: 'Failed to get Zoom recordings' });
   }
 });
 
