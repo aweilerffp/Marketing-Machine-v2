@@ -17,10 +17,11 @@ const router = express.Router();
 router.get('/auth', requireAuth, (req, res) => {
   const state = crypto.randomBytes(16).toString('hex');
 
-  // Zoom OAuth scopes for cloud recording access
+  // Zoom OAuth scopes for cloud recording access and user profile
   const scopes = [
     'cloud_recording:read:list_recording_files',
-    'user:read:list_recordings'
+    'user:read:list_recordings',
+    'user:read:user'
   ];
   const scope = encodeURIComponent(scopes.join(' '));
 
