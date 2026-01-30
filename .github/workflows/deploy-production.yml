@@ -57,7 +57,7 @@ jobs:
             echo "🎨 Building frontend..."
             cd /root/marketing-machine/frontend
             npm ci
-            VITE_API_URL=https://trymarketingmachine.com npm run build
+            VITE_API_URL=https://app.trymarketingmachine.com npm run build
 
             # Restart services
             echo "♻️ Restarting services..."
